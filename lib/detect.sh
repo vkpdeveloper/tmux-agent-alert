@@ -80,17 +80,20 @@ detect_agent() {
   local process_text="$2"
   local content="$3"
   local enabled_agents="$4"
-  local haystack
+  local process_haystack content_haystack
   local agent candidate
 
-  haystack="$(printf '%s\n%s\n%s\n' "$command_text" "$process_text" "$content" | tr '[:upper:]' '[:lower:]')"
+  process_haystack="$(printf '%s\n%s\n' "$command_text" "$process_text" | tr '[:upper:]' '[:lower:]')"
+  content_haystack="$(printf '%s\n' "$content" | tr '[:upper:]' '[:lower:]')"
 
+  # Process/command detection is much stronger than pane text. A Pi pane can
+  # mention Codex while discussing this plugin, but the child process is still pi.
   for agent in codex claude opencode pi; do
     enabled_agent "$agent" "$enabled_agents" || continue
 
     while IFS= read -r candidate; do
       [ -z "$candidate" ] && continue
-      if printf '%s\n' "$haystack" | grep -Eiq "(^|[^[:alnum:]_-])${candidate}([^[:alnum:]_-]|$)"; then
+      if printf '%s\n' "$process_haystack" | grep -Eiq "(^|[^[:alnum:]_-])${candidate}([^[:alnum:]_-]|$)"; then
         printf '%s\n' "$agent"
         return 0
       fi
@@ -102,7 +105,7 @@ detect_agent() {
 
     while IFS= read -r candidate; do
       [ -z "$candidate" ] && continue
-      if printf '%s\n' "$haystack" | grep -Eiq "$candidate"; then
+      if printf '%s\n' "$content_haystack" | grep -Eiq "$candidate"; then
         printf '%s\n' "$agent"
         return 0
       fi
@@ -118,6 +121,16 @@ detect_silent_state() {
   local pattern
   local patterns=()
 
+  while IFS= read -r pattern; do
+    patterns+=("$pattern")
+  done < <(agent_running_patterns "$agent")
+
+  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "RUNNING" "$pattern"
+    return
+  fi
+
+  patterns=()
   while IFS= read -r pattern; do
     patterns+=("$pattern")
   done < <(agent_permission_patterns "$agent")
@@ -139,4 +152,3 @@ detect_silent_state() {
 
   printf '%s\t%s\n' "SILENT_UNKNOWN" "no matching idle or permission pattern"
 }
-

@@ -56,6 +56,44 @@ global_permission_patterns() {
     'do you want to (continue|proceed|approve|allow|run|execute)'
 }
 
+global_running_patterns() {
+  printf '%s\n' \
+    'working\.\.\.' \
+    '(^|[[:space:]·])working([[:space:]·])*·' \
+    '(^|[[:space:]·])thinking([[:space:]·])*·' \
+    '(^|[[:space:]·])processing([[:space:]·])*·'
+}
+
+agent_running_patterns() {
+  local agent="$1"
+
+  case "$agent" in
+    codex)
+      printf '%s\n' \
+        '(^|[[:space:]·])working([[:space:]·]|$)' \
+        'gpt-[^[:space:]]+.*working.*context'
+      ;;
+    claude)
+      printf '%s\n' \
+        'claude.*working' \
+        'working on'
+      ;;
+    opencode)
+      printf '%s\n' \
+        'opencode.*working'
+      ;;
+    pi)
+      printf '%s\n' \
+        '[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] working\.\.\.' \
+        'working\.\.\.' \
+        'kiro is working · type to queue a message' \
+        'type to queue a message'
+      ;;
+  esac
+
+  global_running_patterns
+}
+
 agent_permission_patterns() {
   local agent="$1"
 

@@ -347,11 +347,27 @@ check_pane() {
     reason="first observation"
     old_last_changed="$now"
   elif [ "$hash" != "$old_hash" ]; then
-    new_state="RUNNING"
-    reason="pane output changed"
+    local detection candidate_state candidate_reason
+    detection="$(detect_silent_state "$agent" "$analysis_text")"
+    candidate_state="${detection%%$'\t'*}"
+    candidate_reason="${detection#*$'\t'}"
+
+    case "$candidate_state" in
+      WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT)
+        new_state="$candidate_state"
+        reason="$candidate_reason"
+        ;;
+      *)
+        new_state="RUNNING"
+        reason="pane output changed"
+        ;;
+    esac
+
     old_last_changed="$now"
-    old_last_notified=""
-    old_last_notified_at="0"
+    if [ "$new_state" = "RUNNING" ]; then
+      old_last_notified=""
+      old_last_notified_at="0"
+    fi
   else
     silence_duration=$((now - old_last_changed))
     if [ "$silence_duration" -ge "$silence_threshold" ]; then
