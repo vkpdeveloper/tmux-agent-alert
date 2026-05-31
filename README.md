@@ -44,7 +44,7 @@ Default bindings:
 
 ```text
 prefix + A   toggle watcher
-prefix + I   inspect current pane
+prefix + M-i inspect current pane
 ```
 
 CLI commands:
@@ -63,7 +63,7 @@ CLI commands:
 ```tmux
 set -g @agent-alert-enabled 'on'
 set -g @agent-alert-key 'A'
-set -g @agent-alert-inspect-key 'I'
+set -g @agent-alert-inspect-key 'M-i'
 
 set -g @agent-alert-agents 'codex,claude,opencode,pi'
 set -g @agent-alert-poll-interval '2'
@@ -71,7 +71,7 @@ set -g @agent-alert-silence-threshold '45'
 set -g @agent-alert-capture-lines '200'
 set -g @agent-alert-min-runtime '8'
 set -g @agent-alert-cooldown '300'
-set -g @agent-alert-notify-silent-unknown 'off'
+set -g @agent-alert-notify-silent-unknown 'on'
 
 set -g @agent-alert-backend 'auto'
 set -g @agent-alert-webhook-url ''

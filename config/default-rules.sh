@@ -120,7 +120,11 @@ agent_done_patterns() {
       printf '%s\n' \
         'what would you like to do next' \
         'ask codex' \
-        'codex.*ready'
+        'codex.*ready' \
+        '(^|[[:space:]·])ready([[:space:]·]|$)' \
+        'context [0-9]+% used.*[0-9]+%.*left' \
+        'find and fix a bug in @filename' \
+        'gpt-[^[:space:]]+.*ready.*context'
       ;;
     claude)
       printf '%s\n' \
@@ -139,7 +143,10 @@ agent_done_patterns() {
       printf '%s\n' \
         'pi.*ready' \
         'new prompt' \
-        'send.*prompt'
+        'send.*prompt' \
+        '↑[0-9.]+[kmg]? .*↓[0-9.]+[kmg]? .*\$[0-9.]+' \
+        '\((auto|kiro|sub)\).*((claude|gpt|gemini|opus|sonnet)|xhigh|high)' \
+        '^~/.+'
       ;;
   esac
 

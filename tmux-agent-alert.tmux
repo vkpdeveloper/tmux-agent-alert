@@ -8,7 +8,7 @@ CURRENT_DIR="$(cd "$(dirname "$0")" && pwd)"
 main() {
   enabled="$(get_tmux_option "@agent-alert-enabled" "on")"
   key="$(get_tmux_option "@agent-alert-key" "A")"
-  inspect_key="$(get_tmux_option "@agent-alert-inspect-key" "I")"
+  inspect_key="$(get_tmux_option "@agent-alert-inspect-key" "M-i")"
 
   if ! is_enabled "$enabled"; then
     return

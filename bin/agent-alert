@@ -133,20 +133,59 @@ enabled_agents_option() {
 }
 
 notify_title_for_state() {
-  case "$1" in
+  local agent="$1"
+  local state="$2"
+  local display_name
+
+  display_name="$(agent_display_name "$agent")"
+
+  case "$state" in
     WAITING_FOR_PERMISSION)
-      printf '%s\n' "Agent needs approval"
+      printf '%s\n' "$display_name needs approval"
       ;;
     DONE_WAITING_FOR_NEXT_PROMPT)
-      printf '%s\n' "Agent is waiting"
+      printf '%s\n' "$display_name completed working"
       ;;
     SILENT_UNKNOWN)
-      printf '%s\n' "Agent went silent"
+      printf '%s\n' "$display_name stopped producing output"
       ;;
     *)
-      printf '%s\n' "Agent state changed"
+      printf '%s\n' "$display_name state changed"
       ;;
   esac
+}
+
+agent_display_name() {
+  case "$1" in
+    codex)
+      printf '%s\n' "Codex"
+      ;;
+    claude)
+      printf '%s\n' "Claude Code"
+      ;;
+    opencode)
+      printf '%s\n' "OpenCode"
+      ;;
+    pi)
+      printf '%s\n' "Pi"
+      ;;
+    *)
+      printf '%s\n' "Agent"
+      ;;
+  esac
+}
+
+shorten_context() {
+  local value="$1"
+  local max_length="${2:-180}"
+
+  value="$(printf '%s' "$value" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//')"
+
+  if [ "${#value}" -gt "$max_length" ]; then
+    printf '%s...\n' "${value:0:max_length}"
+  else
+    printf '%s\n' "$value"
+  fi
 }
 
 notify_message_for_pane() {
@@ -159,9 +198,28 @@ notify_message_for_pane() {
   local pane="$7"
   local path="$8"
   local context="$9"
+  local reason_label display_name short_context
 
-  printf '%s %s in %s:%s.%s (%s)\nPath: %s\n%s' \
-    "$agent" "$state" "$session" "$window_index" "$pane_index" "$pane" "$path" "$context"
+  display_name="$(agent_display_name "$agent")"
+  short_context="$(shorten_context "$context" 160)"
+
+  case "$state" in
+    WAITING_FOR_PERMISSION)
+      reason_label="Waiting for your approval"
+      ;;
+    DONE_WAITING_FOR_NEXT_PROMPT)
+      reason_label="Ready for the next prompt"
+      ;;
+    SILENT_UNKNOWN)
+      reason_label="No pane output after the silence threshold"
+      ;;
+    *)
+      reason_label="$state"
+      ;;
+  esac
+
+  printf '%s in %s:%s.%s %s (%s)\n%s\n%s' \
+    "$display_name" "$session" "$window_index" "$pane_index" "$window_name" "$pane" "$reason_label" "$short_context"
 }
 
 macos_sender_bundle_option() {
@@ -218,7 +276,7 @@ should_notify_transition() {
   case "$new_state" in
     WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT)
       case "$old_state" in
-        RUNNING|UNKNOWN)
+        RUNNING|UNKNOWN|SILENT_UNKNOWN)
           return 0
           ;;
       esac
@@ -247,7 +305,7 @@ check_pane() {
   poll_interval="$(get_tmux_option "@agent-alert-poll-interval" "${AGENT_ALERT_POLL_INTERVAL:-2}")"
   silence_threshold="$(get_tmux_option "@agent-alert-silence-threshold" "${AGENT_ALERT_SILENCE_THRESHOLD:-45}")"
   capture_lines="$(get_tmux_option "@agent-alert-capture-lines" "${AGENT_ALERT_CAPTURE_LINES:-200}")"
-  notify_unknown="$(get_tmux_option "@agent-alert-notify-silent-unknown" "${AGENT_ALERT_NOTIFY_SILENT_UNKNOWN:-off}")"
+  notify_unknown="$(get_tmux_option "@agent-alert-notify-silent-unknown" "${AGENT_ALERT_NOTIFY_SILENT_UNKNOWN:-on}")"
   cooldown="$(get_tmux_option "@agent-alert-cooldown" "${AGENT_ALERT_COOLDOWN:-300}")"
   min_runtime="$(get_tmux_option "@agent-alert-min-runtime" "${AGENT_ALERT_MIN_RUNTIME:-8}")"
   backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"
@@ -332,11 +390,13 @@ Silence: ${silence_duration}s
 Runtime: ${runtime}s
 Matched rule: $reason
 Last line: $context
+Notification title: $(notify_title_for_state "$agent" "$new_state")
 EOF
+    return 0
   fi
 
   if [ "$can_notify" = "yes" ]; then
-    title="$(notify_title_for_state "$new_state")"
+    title="$(notify_title_for_state "$agent" "$new_state")"
     message="$(notify_message_for_pane "$agent" "$new_state" "$session" "$window_name" "$window_index" "$pane_index" "$pane" "$path" "$context")"
     notify_user "$title" "$message" "$backend" "$webhook_url" "$STATE_DIR" "$macos_sender_bundle"
     old_last_notified="$new_state"
