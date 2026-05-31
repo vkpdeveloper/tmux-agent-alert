@@ -64,6 +64,17 @@ pid_alive() {
   [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1
 }
 
+watcher_pids() {
+  local script="$ROOT_DIR/bin/agent-alert"
+  local self="$$"
+
+  ps -axo pid=,command= 2>/dev/null | awk -v script="$script" -v self="$self" '
+    $1 != self && index($0, script " watch") {
+      print $1
+    }
+  '
+}
+
 running_pid() {
   if [ -f "$PID_FILE" ]; then
     local pid
@@ -72,6 +83,14 @@ running_pid() {
       printf '%s\n' "$pid"
       return 0
     fi
+  fi
+
+  local discovered
+  discovered="$(watcher_pids | head -1)"
+  if [ -n "$discovered" ]; then
+    printf '%s\n' "$discovered" > "$PID_FILE"
+    printf '%s\n' "$discovered"
+    return 0
   fi
 
   return 1
@@ -486,7 +505,7 @@ start_watcher() {
 }
 
 stop_watcher() {
-  local pid
+  local pid pids
   pid="$(running_pid || true)"
 
   if [ -z "$pid" ]; then
@@ -495,7 +514,13 @@ stop_watcher() {
     return 0
   fi
 
-  kill "$pid" >/dev/null 2>&1 || true
+  pids="$(watcher_pids)"
+  if [ -n "$pids" ]; then
+    # shellcheck disable=SC2086
+    kill $pids >/dev/null 2>&1 || true
+  else
+    kill "$pid" >/dev/null 2>&1 || true
+  fi
   rm -f "$PID_FILE"
   printf 'tmux-agent-alert stopped\n'
 }
