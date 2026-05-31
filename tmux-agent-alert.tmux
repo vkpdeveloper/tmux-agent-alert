@@ -5,6 +5,24 @@ CURRENT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/tmux.sh
 . "$CURRENT_DIR/lib/tmux.sh"
 
+install_status_styles() {
+  original_format="$(tmux show-option -gqv "@agent-alert-original-window-status-format")"
+  original_current_format="$(tmux show-option -gqv "@agent-alert-original-window-status-current-format")"
+
+  if [ -z "$original_format" ]; then
+    original_format="$(tmux show-option -gqv "window-status-format")"
+    tmux set-option -gq "@agent-alert-original-window-status-format" "$original_format"
+  fi
+
+  if [ -z "$original_current_format" ]; then
+    original_current_format="$(tmux show-option -gqv "window-status-current-format")"
+    tmux set-option -gq "@agent-alert-original-window-status-current-format" "$original_current_format"
+  fi
+
+  tmux set-option -gq "window-status-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}#{@agent-alert-original-window-status-format}"
+  tmux set-option -gq "window-status-current-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}#{@agent-alert-original-window-status-current-format}"
+}
+
 main() {
   enabled="$(get_tmux_option "@agent-alert-enabled" "on")"
   key="$(get_tmux_option "@agent-alert-key" "A")"
@@ -13,6 +31,8 @@ main() {
   if ! is_enabled "$enabled"; then
     return
   fi
+
+  install_status_styles
 
   tmux bind-key "$key" run-shell -b "$CURRENT_DIR/bin/agent-alert toggle"
   tmux bind-key "$inspect_key" display-popup -E "$CURRENT_DIR/bin/agent-alert inspect-pane #{pane_id}; printf '\nPress enter to close...'; read _"

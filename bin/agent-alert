@@ -307,13 +307,13 @@ visual_alert_style_for_state() {
 
   case "$state" in
     WAITING_FOR_PERMISSION)
-      get_tmux_option "@agent-alert-visual-permission-style" "${AGENT_ALERT_VISUAL_PERMISSION_STYLE:-fg=red,bold}"
+      printf '%s\n' "red"
       ;;
     DONE_WAITING_FOR_NEXT_PROMPT)
-      get_tmux_option "@agent-alert-visual-done-style" "${AGENT_ALERT_VISUAL_DONE_STYLE:-fg=red,bold}"
+      printf '%s\n' "red"
       ;;
     SILENT_UNKNOWN)
-      get_tmux_option "@agent-alert-visual-silent-style" "${AGENT_ALERT_VISUAL_SILENT_STYLE:-fg=yellow,bold}"
+      printf '%s\n' "yellow"
       ;;
     *)
       printf '%s\n' "default"
@@ -337,15 +337,17 @@ set_visual_alert() {
   local state="$2"
   local _agent="$3"
   local _location="$4"
-  local style
+  local window_target style
 
   visual_alert_enabled || return 0
+  window_target="$(tmux display-message -p -t "$pane" '#{session_name}:#{window_index}' 2>/dev/null || true)"
+  [ -n "$window_target" ] || return 0
 
   if visual_alert_state_is_attention "$state"; then
     style="$(visual_alert_style_for_state "$state")"
-    tmux select-pane -t "$pane" -P "$style" 2>/dev/null || true
+    tmux set-window-option -q -t "$window_target" "@agent-alert-attention" "$style" 2>/dev/null || true
   else
-    tmux select-pane -t "$pane" -P default 2>/dev/null || true
+    tmux set-window-option -qu -t "$window_target" "@agent-alert-attention" 2>/dev/null || true
   fi
 }
 

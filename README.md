@@ -117,14 +117,14 @@ To trigger the macOS permission prompt manually:
 
 ## Visual Alerts
 
-When an agent needs attention, the plugin also marks the tmux pane itself. This is useful when your terminal app is already focused and macOS may not show a noticeable notification.
+When an agent needs attention, the plugin also marks the tmux status-bar window item itself, for example `3:AI`. This is useful when your terminal app is already focused and macOS may not show a noticeable notification.
 
 Default behavior:
 
 ```text
-done/idle       red bold pane marker
-permission      red bold pane marker
-silent unknown  yellow bold pane marker
+done/idle       red bold window item
+permission      red bold window item
+silent unknown  yellow bold window item
 running again   marker cleared
 ```
 
