@@ -233,6 +233,12 @@ notify_message_for_pane() {
   location="$(pane_location "$session" "$window_name" "$window_index" "$pane_index")"
   target="$session:$window_index"
 
+  if [ "$session_attached" = "0" ]; then
+    attach_label="detached session"
+  else
+    attach_label="attached session"
+  fi
+
   case "$state" in
     WAITING_FOR_PERMISSION)
       reason_label="Waiting for your approval"
@@ -288,6 +294,59 @@ shell_quote() {
 
 macos_sender_bundle_option() {
   get_tmux_option "@agent-alert-macos-sender-bundle" "${AGENT_ALERT_MACOS_SENDER_BUNDLE:-auto}"
+}
+
+visual_alert_enabled() {
+  local enabled
+  enabled="$(get_tmux_option "@agent-alert-visual-alert" "${AGENT_ALERT_VISUAL_ALERT:-on}")"
+  is_enabled "$enabled"
+}
+
+visual_alert_style_for_state() {
+  local state="$1"
+
+  case "$state" in
+    WAITING_FOR_PERMISSION)
+      get_tmux_option "@agent-alert-visual-permission-style" "${AGENT_ALERT_VISUAL_PERMISSION_STYLE:-fg=red,bold}"
+      ;;
+    DONE_WAITING_FOR_NEXT_PROMPT)
+      get_tmux_option "@agent-alert-visual-done-style" "${AGENT_ALERT_VISUAL_DONE_STYLE:-fg=red,bold}"
+      ;;
+    SILENT_UNKNOWN)
+      get_tmux_option "@agent-alert-visual-silent-style" "${AGENT_ALERT_VISUAL_SILENT_STYLE:-fg=yellow,bold}"
+      ;;
+    *)
+      printf '%s\n' "default"
+      ;;
+  esac
+}
+
+visual_alert_state_is_attention() {
+  case "$1" in
+    WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT|SILENT_UNKNOWN)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+set_visual_alert() {
+  local pane="$1"
+  local state="$2"
+  local _agent="$3"
+  local _location="$4"
+  local style
+
+  visual_alert_enabled || return 0
+
+  if visual_alert_state_is_attention "$state"; then
+    style="$(visual_alert_style_for_state "$state")"
+    tmux select-pane -t "$pane" -P "$style" 2>/dev/null || true
+  else
+    tmux select-pane -t "$pane" -P default 2>/dev/null || true
+  fi
 }
 
 request_macos_permission() {
@@ -474,9 +533,12 @@ Matched rule: $reason
 Last line: $context
 Notification title: $(notify_title_for_state "$agent" "$new_state" "$location")
 Notification subtitle: $(notification_subtitle_for_pane "$session" "$window_name" "$window_index" "$pane_index" "$session_attached")
+Visual alert: $(if visual_alert_enabled; then visual_alert_style_for_state "$new_state"; else printf 'off'; fi)
 EOF
     return 0
   fi
+
+  set_visual_alert "$pane" "$new_state" "$agent" "$location"
 
   if [ "$can_notify" = "yes" ]; then
     title="$(notify_title_for_state "$agent" "$new_state" "$location")"
@@ -496,6 +558,7 @@ EOF
     "window_index" "$window_index" \
     "pane_index" "$pane_index" \
     "session_attached" "$session_attached" \
+    "visual_alert" "$(if visual_alert_state_is_attention "$new_state"; then visual_alert_style_for_state "$new_state"; else printf 'default'; fi)" \
     "state" "$new_state" \
     "last_hash" "$hash" \
     "last_changed_at" "$old_last_changed" \

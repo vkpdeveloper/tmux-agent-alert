@@ -79,6 +79,11 @@ set -g @agent-alert-debug 'off'
 
 set -g @agent-alert-request-macos-permission 'on'
 set -g @agent-alert-macos-sender-bundle 'auto'
+
+set -g @agent-alert-visual-alert 'on'
+set -g @agent-alert-visual-done-style 'fg=red,bold'
+set -g @agent-alert-visual-permission-style 'fg=red,bold'
+set -g @agent-alert-visual-silent-style 'fg=yellow,bold'
 ```
 
 Notification backends:
@@ -108,6 +113,25 @@ To trigger the macOS permission prompt manually:
 
 ```sh
 ~/.tmux/plugins/tmux-agent-alert/bin/agent-alert request-permission
+```
+
+## Visual Alerts
+
+When an agent needs attention, the plugin also marks the tmux pane itself. This is useful when your terminal app is already focused and macOS may not show a noticeable notification.
+
+Default behavior:
+
+```text
+done/idle       red bold pane marker
+permission      red bold pane marker
+silent unknown  yellow bold pane marker
+running again   marker cleared
+```
+
+Disable it:
+
+```tmux
+set -g @agent-alert-visual-alert 'off'
 ```
 
 ## Custom Rules
