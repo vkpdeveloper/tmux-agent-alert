@@ -312,9 +312,6 @@ visual_alert_style_for_state() {
     DONE_WAITING_FOR_NEXT_PROMPT)
       printf '%s\n' "red"
       ;;
-    SILENT_UNKNOWN)
-      printf '%s\n' "yellow"
-      ;;
     *)
       printf '%s\n' "default"
       ;;
@@ -323,7 +320,7 @@ visual_alert_style_for_state() {
 
 visual_alert_state_is_attention() {
   case "$1" in
-    WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT|SILENT_UNKNOWN)
+    WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT)
       return 0
       ;;
     *)
@@ -445,7 +442,7 @@ check_pane() {
   poll_interval="$(get_tmux_option "@agent-alert-poll-interval" "${AGENT_ALERT_POLL_INTERVAL:-2}")"
   silence_threshold="$(get_tmux_option "@agent-alert-silence-threshold" "${AGENT_ALERT_SILENCE_THRESHOLD:-45}")"
   capture_lines="$(get_tmux_option "@agent-alert-capture-lines" "${AGENT_ALERT_CAPTURE_LINES:-200}")"
-  notify_unknown="$(get_tmux_option "@agent-alert-notify-silent-unknown" "${AGENT_ALERT_NOTIFY_SILENT_UNKNOWN:-on}")"
+  notify_unknown="$(get_tmux_option "@agent-alert-notify-silent-unknown" "${AGENT_ALERT_NOTIFY_SILENT_UNKNOWN:-off}")"
   cooldown="$(get_tmux_option "@agent-alert-cooldown" "${AGENT_ALERT_COOLDOWN:-300}")"
   min_runtime="$(get_tmux_option "@agent-alert-min-runtime" "${AGENT_ALERT_MIN_RUNTIME:-8}")"
   backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"

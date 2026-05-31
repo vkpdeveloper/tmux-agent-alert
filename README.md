@@ -71,7 +71,7 @@ set -g @agent-alert-silence-threshold '45'
 set -g @agent-alert-capture-lines '200'
 set -g @agent-alert-min-runtime '8'
 set -g @agent-alert-cooldown '300'
-set -g @agent-alert-notify-silent-unknown 'on'
+set -g @agent-alert-notify-silent-unknown 'off'
 
 set -g @agent-alert-backend 'auto'
 set -g @agent-alert-webhook-url ''
@@ -122,7 +122,7 @@ Default behavior:
 ```text
 done/idle       red bold window item
 permission      red bold window item
-silent unknown  yellow bold window item
+silent unknown  no status marker by default
 running again   marker cleared
 ```
 
