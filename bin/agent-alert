@@ -404,25 +404,6 @@ visual_alert_value_is_attention() {
   esac
 }
 
-set_visual_alert() {
-  local pane="$1"
-  local state="$2"
-  local _agent="$3"
-  local _location="$4"
-  local window_target style
-
-  visual_alert_enabled || return 0
-  window_target="$(tmux display-message -p -t "$pane" '#{session_name}:#{window_index}' 2>/dev/null || true)"
-  [ -n "$window_target" ] || return 0
-
-  if visual_alert_state_is_attention "$state"; then
-    style="$(visual_alert_style_for_state "$state")"
-    tmux set-window-option -q -t "$window_target" "@agent-alert-attention" "$style" 2>/dev/null || true
-  else
-    tmux set-window-option -qu -t "$window_target" "@agent-alert-attention" 2>/dev/null || true
-  fi
-}
-
 refresh_visual_alert_for_window() {
   local window_target="$1"
   local session window_index file file_session file_window file_visual style
@@ -612,8 +593,8 @@ check_pane() {
   macos_sender_bundle="$(macos_sender_bundle_option)"
   enabled_agents="$(enabled_agents_option)"
 
-  local content analysis_text process_text agent hash file now old_hash old_last_changed old_state old_first_seen old_last_notified old_last_notified_at old_acknowledged_state
-  local silence_duration new_state reason context runtime can_notify title message subtitle location stored_visual_alert
+  local content analysis_text process_text agent hash file now old_hash old_last_changed old_state old_first_seen old_last_notified old_last_notified_at old_acknowledged_state old_acknowledged_hash
+  local silence_duration new_state reason context runtime can_notify title message subtitle location stored_visual_alert acknowledged_current_attention
 
   content="$(capture_clean_pane "$pane" "$capture_lines" || true)"
   [ -n "$content" ] || return 0
@@ -641,6 +622,7 @@ check_pane() {
   old_last_notified="$(state_get "$file" "last_notified_state" "")"
   old_last_notified_at="$(state_get "$file" "last_notified_at" "0")"
   old_acknowledged_state="$(state_get "$file" "acknowledged_state" "")"
+  old_acknowledged_hash="$(state_get "$file" "acknowledged_hash" "")"
 
   if [ -z "$old_hash" ]; then
     new_state="UNKNOWN"
@@ -668,6 +650,7 @@ check_pane() {
       old_last_notified=""
       old_last_notified_at="0"
       old_acknowledged_state=""
+      old_acknowledged_hash=""
     fi
   else
     silence_duration=$((now - old_last_changed))
@@ -686,9 +669,16 @@ check_pane() {
   runtime=$((now - old_first_seen))
   context="$(printf '%s\n' "$content" | last_visible_line)"
   location="$(pane_location "$session" "$window_name" "$window_index" "$pane_index")"
+  stored_visual_alert="$(visual_alert_style_for_state "$new_state")"
+  acknowledged_current_attention="no"
+
+  if visual_alert_state_is_attention "$new_state" && [ -n "$old_acknowledged_hash" ] && [ "$old_acknowledged_hash" = "$hash" ]; then
+    acknowledged_current_attention="yes"
+    stored_visual_alert="default"
+  fi
 
   can_notify="no"
-  if should_notify_transition "$old_state" "$new_state" "$notify_unknown"; then
+  if [ "$acknowledged_current_attention" != "yes" ] && should_notify_transition "$old_state" "$new_state" "$notify_unknown"; then
     if [ "$old_last_notified" != "$new_state" ] && [ $((now - old_last_notified_at)) -ge "$cooldown" ]; then
       if state_notification_ignores_min_runtime "$new_state" || [ "$runtime" -ge "$min_runtime" ]; then
         can_notify="yes"
@@ -712,18 +702,11 @@ Matched rule: $reason
 Last line: $context
 Notification title: $(notify_title_for_state "$agent" "$new_state" "$location")
 Notification subtitle: $(notification_subtitle_for_pane "$session" "$window_name" "$window_index" "$pane_index" "$session_attached")
-Visual alert: $(if visual_alert_enabled; then visual_alert_style_for_state "$new_state"; else printf 'off'; fi)
+Visual alert: $(if visual_alert_enabled; then printf '%s' "$stored_visual_alert"; else printf 'off'; fi)
 Acknowledged state: $old_acknowledged_state
+Acknowledged hash: $old_acknowledged_hash
 EOF
     return 0
-  fi
-
-  if [ "$old_acknowledged_state" = "$new_state" ]; then
-    set_visual_alert "$pane" "UNKNOWN" "$agent" "$location"
-    stored_visual_alert="default"
-  else
-    set_visual_alert "$pane" "$new_state" "$agent" "$location"
-    stored_visual_alert="$(if visual_alert_state_is_attention "$new_state"; then visual_alert_style_for_state "$new_state"; else printf 'default'; fi)"
   fi
 
   if [ "$can_notify" = "yes" ]; then
@@ -758,8 +741,11 @@ EOF
     "last_notified_state" "$old_last_notified" \
     "last_notified_at" "$old_last_notified_at" \
     "acknowledged_state" "$old_acknowledged_state" \
+    "acknowledged_hash" "$old_acknowledged_hash" \
     "last_reason" "$reason" \
     "last_context" "$context"
+
+  refresh_visual_alert_for_pane "$pane"
 }
 
 list_panes() {
@@ -888,7 +874,6 @@ test_notify() {
 
 clear_alert() {
   local pane="${1:-}"
-  local file state
 
   if [ -z "$pane" ]; then
     pane="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
@@ -897,39 +882,23 @@ clear_alert() {
   [ -n "$pane" ] || return 0
 
   clear_visual_alert_for_pane "$pane"
-
-  file="$(state_file_for_pane "$pane")"
-  [ -f "$file" ] || return 0
-
-  state="$(state_get "$file" "state" "")"
-  case "$state" in
-    WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT)
-      write_state "$file" \
-        "pane" "$(state_get "$file" "pane" "$pane")" \
-        "agent" "$(state_get "$file" "agent" "")" \
-        "session" "$(state_get "$file" "session" "")" \
-        "window_name" "$(state_get "$file" "window_name" "")" \
-        "window_index" "$(state_get "$file" "window_index" "")" \
-        "pane_index" "$(state_get "$file" "pane_index" "")" \
-        "session_attached" "$(state_get "$file" "session_attached" "")" \
-        "visual_alert" "default" \
-        "state" "$state" \
-        "last_hash" "$(state_get "$file" "last_hash" "")" \
-        "last_changed_at" "$(state_get "$file" "last_changed_at" "$(now_epoch)")" \
-        "first_seen_at" "$(state_get "$file" "first_seen_at" "$(now_epoch)")" \
-        "last_notified_state" "$(state_get "$file" "last_notified_state" "")" \
-        "last_notified_at" "$(state_get "$file" "last_notified_at" "0")" \
-        "acknowledged_state" "$state" \
-        "last_reason" "$(state_get "$file" "last_reason" "")" \
-        "last_context" "$(state_get "$file" "last_context" "")"
-      ;;
-  esac
 }
 
 pane_exited() {
   local pane="${1:-}"
+  local file session window_index
+
   [ -n "$pane" ] || return 0
-  rm -f "$(state_file_for_pane "$pane")"
+
+  file="$(state_file_for_pane "$pane")"
+  session="$(state_get "$file" "session" "")"
+  window_index="$(state_get "$file" "window_index" "")"
+
+  rm -f "$file"
+
+  if [ -n "$session" ] && [ -n "$window_index" ]; then
+    refresh_visual_alert_for_window "$session:$window_index"
+  fi
 }
 
 main() {
