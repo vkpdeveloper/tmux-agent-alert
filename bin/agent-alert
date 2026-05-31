@@ -296,41 +296,36 @@ enabled_agents_option() {
 notify_title_for_state() {
   local agent="$1"
   local state="$2"
-  local location="${3:-}"
   local display_name
   local action
 
-  display_name="$(agent_display_name "$agent")"
+  display_name="$(agent_notification_name "$agent")"
 
   case "$state" in
     WAITING_FOR_PERMISSION)
-      action="$display_name needs approval"
+      action="Asking Permission"
       ;;
     DONE_WAITING_FOR_NEXT_PROMPT)
-      action="$display_name completed working"
+      action="Completed"
       ;;
     SILENT_UNKNOWN)
-      action="$display_name stopped producing output"
+      action="Silent"
       ;;
     *)
-      action="$display_name state changed"
+      action="Needs Attention"
       ;;
   esac
 
-  if [ -n "$location" ]; then
-    printf '%s\n' "$location - $action"
-  else
-    printf '%s\n' "$action"
-  fi
+  printf '%s - %s\n' "$display_name" "$action"
 }
 
-agent_display_name() {
+agent_notification_name() {
   case "$1" in
     codex)
       printf '%s\n' "Codex"
       ;;
     claude)
-      printf '%s\n' "Claude Code"
+      printf '%s\n' "Claude"
       ;;
     opencode)
       printf '%s\n' "OpenCode"
@@ -358,46 +353,45 @@ shorten_context() {
 }
 
 notify_message_for_pane() {
-  local agent="$1"
   local state="$2"
   local session="$3"
   local window_name="$4"
   local window_index="$5"
   local pane_index="$6"
   local pane="$7"
-  local path="$8"
   local context="$9"
   local session_attached="${10:-}"
-  local reason_label display_name short_context location target attach_label
+  local reason_label short_context location attach_label
 
-  display_name="$(agent_display_name "$agent")"
-  short_context="$(shorten_context "$context" 160)"
-  location="$(pane_location "$session" "$window_name" "$window_index" "$pane_index")"
-  target="$session:$window_index"
+  short_context="$(shorten_context "$context" 140)"
+  location="$(notification_location_for_pane "$session" "$window_name" "$window_index" "$pane_index")"
 
   if [ "$session_attached" = "0" ]; then
-    attach_label="detached session"
+    attach_label="detached"
   else
-    attach_label="attached session"
+    attach_label="attached"
   fi
 
   case "$state" in
     WAITING_FOR_PERMISSION)
-      reason_label="Waiting for your approval"
+      reason_label="Needs your approval"
       ;;
     DONE_WAITING_FOR_NEXT_PROMPT)
-      reason_label="Ready for the next prompt"
+      reason_label="Finished and ready for the next prompt"
       ;;
     SILENT_UNKNOWN)
-      reason_label="No pane output after the silence threshold"
+      reason_label="Stopped producing output"
       ;;
     *)
-      reason_label="$state"
+      reason_label="State changed"
       ;;
   esac
 
-  printf '%s (%s, %s)\n%s\nJump: tmux switch-client -t %s\nPath: %s\n%s' \
-    "$location" "$pane" "$attach_label" "$reason_label" "$(shell_quote "$target")" "$path" "$short_context"
+  if [ -n "$short_context" ]; then
+    printf '%s (%s, %s)\n%s: %s' "$location" "$pane" "$attach_label" "$reason_label" "$short_context"
+  else
+    printf '%s (%s, %s)\n%s' "$location" "$pane" "$attach_label" "$reason_label"
+  fi
 }
 
 notification_subtitle_for_pane() {
@@ -414,7 +408,7 @@ notification_subtitle_for_pane() {
     label="attached"
   fi
 
-  printf '%s\n' "$(pane_location "$session" "$window_name" "$window_index" "$pane_index") ($label)"
+  printf '%s (%s)\n' "$(notification_location_for_pane "$session" "$window_name" "$window_index" "$pane_index")" "$label"
 }
 
 pane_location() {
@@ -430,8 +424,17 @@ pane_location() {
   fi
 }
 
-shell_quote() {
-  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+notification_location_for_pane() {
+  local session="$1"
+  local window_name="$2"
+  local window_index="$3"
+  local pane_index="$4"
+
+  if [ -n "$window_name" ]; then
+    printf '%s:%s' "$session" "$window_name"
+  else
+    printf '%s:%s.%s' "$session" "$window_index" "$pane_index"
+  fi
 }
 
 macos_sender_bundle_option() {
