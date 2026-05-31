@@ -78,7 +78,11 @@ agent_running_patterns() {
     claude)
       printf '%s\n' \
         'claude.*working' \
-        'working on'
+        'working on' \
+        'tomfoolering' \
+        'running [0-9]+ shell command' \
+        'running [0-9]+ shell commands' \
+        '↓ [0-9,]+ tokens'
       ;;
     opencode)
       printf '%s\n' \
@@ -116,6 +120,13 @@ agent_permission_patterns() {
       ;;
     claude)
       printf '%s\n' \
+        'do you want to (create|edit|write|run|execute|delete|modify)' \
+        'yes, allow all edits during this session' \
+        'esc to cancel[[:space:]·]*tab to amend' \
+        '^1\. yes$' \
+        '^3\. no$' \
+        'create file' \
+        'write\(' \
         'yes, don'"'"'t ask again' \
         'ask before edits' \
         'permission mode' \
@@ -177,6 +188,10 @@ agent_done_patterns() {
       ;;
     claude)
       printf '%s\n' \
+        'worked for [0-9]+s' \
+        'no task given\. what you want do\?' \
+        '^❯[[:space:]]*$' \
+        '-- insert --.*for agents' \
         'what can i help' \
         'how can i help' \
         'try .* claude' \
