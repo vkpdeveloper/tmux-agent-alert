@@ -23,7 +23,7 @@ The rules are intentionally editable because agent TUIs change over time and tmu
 
 - tmux
 - Bash and standard Unix tools such as `awk`, `sed`, `grep`, `ps`, `pgrep`, and `shasum` or `sha256sum`
-- macOS native notifications are sent through the terminal app currently attached to tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
+- macOS native notifications use a tiny Swift helper app with the stable bundle id `dev.vkp.tmux-agent-alert.notifier`. If `swiftc` is unavailable, the plugin falls back to the terminal app currently attached to tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
 
 ## Install
 
@@ -74,7 +74,7 @@ Check that the watcher is running:
 ~/.tmux/plugins/tmux-agent-alert/bin/agent-alert status
 ```
 
-If `test-notify` exits but no macOS banner appears, check System Settings -> Notifications and allow notifications for the terminal app running tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
+If `test-notify` exits but no macOS banner appears, check System Settings -> Notifications and allow notifications for `tmux-agent-alert`. If the native helper could not be built, also check the terminal app running tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
 
 ## Usage
 
@@ -128,15 +128,22 @@ Notification backends:
 
 ```text
 auto
+macos-native
 macos-terminal
 notify-send
 tmux
 bell
 ```
 
-On macOS, `auto` uses `macos-terminal`, which detects the terminal app attached to the tmux client and sends the notification through that app bundle. This makes macOS request notification permission for the terminal actually running tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
+On macOS, `auto` uses `macos-native` first. The native backend builds `TmuxAgentAlertNotifier.app` into the plugin state directory on first use and sends notifications through Apple’s UserNotifications framework with the stable bundle id `dev.vkp.tmux-agent-alert.notifier`. This gives System Settings a dedicated `tmux-agent-alert` notification entry instead of tying delivery to whichever terminal happens to be attached to tmux.
 
-If terminal-app delivery fails or hangs, the caller falls back to tmux display messages where appropriate, then terminal bell. Native notification commands are timeout-guarded so a stuck helper should not block the agent-alert command indefinitely.
+If the Swift helper cannot be built or native delivery fails, `auto` falls back to `macos-terminal`, which detects the terminal app attached to the tmux client and sends the notification through that app bundle. If terminal-app delivery fails or hangs, the caller falls back to tmux display messages where appropriate, then terminal bell. Native notification commands are timeout-guarded so a stuck helper should not block the agent-alert command indefinitely.
+
+To force the native macOS helper:
+
+```tmux
+set -g @agent-alert-backend 'macos-native'
+```
 
 To force a specific macOS sender bundle:
 

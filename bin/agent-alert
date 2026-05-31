@@ -438,6 +438,14 @@ macos_sender_bundle_option() {
   get_tmux_option "@agent-alert-macos-sender-bundle" "${AGENT_ALERT_MACOS_SENDER_BUNDLE:-auto}"
 }
 
+notification_permission_marker_file() {
+  local bundle_id="$1"
+  local marker_key
+
+  marker_key="$(printf '%s' "$bundle_id" | tr -c '[:alnum:]._' '_')"
+  printf '%s\n' "$STATE_DIR/macos-permission-$marker_key.seen"
+}
+
 visual_alert_enabled() {
   local enabled
   enabled="$(get_tmux_option "@agent-alert-visual-alert" "${AGENT_ALERT_VISUAL_ALERT:-on}")"
@@ -578,7 +586,7 @@ show_tmux_alert_fallback() {
 
 request_macos_permission() {
   local force="${1:-no}"
-  local enabled backend bundle marker_key marker_file resolved_bundle
+  local enabled backend bundle marker_file resolved_bundle native_bundle
 
   is_macos || return 0
 
@@ -587,7 +595,7 @@ request_macos_permission() {
 
   backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"
   case "$backend" in
-    auto|macos-terminal)
+    auto|macos-native|macos-terminal)
       ;;
     *)
       return 0
@@ -595,6 +603,28 @@ request_macos_permission() {
   esac
 
   ensure_state_dir
+
+  case "$backend" in
+    auto|macos-native)
+      native_bundle="$(macos_native_notifier_bundle_id)"
+      marker_file="$(notification_permission_marker_file "$native_bundle")"
+
+      if [ "$force" = "yes" ] || [ ! -f "$marker_file" ]; then
+        if macos_display_notification_from_native \
+          "tmux-agent-alert" \
+          "Notification permission check for $native_bundle" \
+          "$STATE_DIR" \
+          "permission setup" \
+          "$(notification_permission_timeout)"; then
+          printf '%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" > "$marker_file"
+          return 0
+        fi
+      else
+        return 0
+      fi
+      ;;
+  esac
+
   bundle="$(macos_sender_bundle_option)"
   resolved_bundle="$bundle"
 
@@ -604,8 +634,7 @@ request_macos_permission() {
 
   [ -n "$resolved_bundle" ] || return 0
 
-  marker_key="$(printf '%s' "$resolved_bundle" | tr -c '[:alnum:]._' '_')"
-  marker_file="$STATE_DIR/macos-permission-$marker_key.seen"
+  marker_file="$(notification_permission_marker_file "$resolved_bundle")"
 
   if [ "$force" != "yes" ] && [ -f "$marker_file" ]; then
     return 0
@@ -936,8 +965,9 @@ status_watcher() {
 
   if is_macos; then
     local bundle_id
+    printf 'macOS native notifier: %s\n' "$(macos_native_notifier_status "$STATE_DIR")"
     bundle_id="$(macos_terminal_bundle_from_tmux_clients "$STATE_DIR" || true)"
-    printf 'macOS sender bundle: %s\n' "${bundle_id:-not detected}"
+    printf 'macOS terminal fallback sender bundle: %s\n' "${bundle_id:-not detected}"
   fi
 }
 

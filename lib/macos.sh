@@ -17,6 +17,32 @@ notification_command_timeout() {
   esac
 }
 
+notification_permission_timeout() {
+  local timeout="${AGENT_ALERT_NOTIFICATION_PERMISSION_TIMEOUT:-60}"
+
+  case "$timeout" in
+    ''|*[!0-9]*)
+      printf '%s\n' "60"
+      ;;
+    *)
+      printf '%s\n' "$timeout"
+      ;;
+  esac
+}
+
+notification_build_timeout() {
+  local timeout="${AGENT_ALERT_NOTIFIER_BUILD_TIMEOUT:-30}"
+
+  case "$timeout" in
+    ''|*[!0-9]*)
+      printf '%s\n' "30"
+      ;;
+    *)
+      printf '%s\n' "$timeout"
+      ;;
+  esac
+}
+
 run_notification_command_with_timeout() {
   local timeout="$1"
   shift
@@ -207,6 +233,163 @@ macos_application_is_running() {
 
   running="$(osascript -e "application id \"$(macos_escape_applescript "$bundle_id")\" is running" 2>/dev/null || true)"
   [ "$running" = "true" ]
+}
+
+macos_native_notifier_bundle_id() {
+  printf '%s\n' "dev.vkp.tmux-agent-alert.notifier"
+}
+
+macos_plugin_root() {
+  cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
+}
+
+macos_native_notifier_app_dir() {
+  local state_dir="$1"
+
+  printf '%s\n' "$state_dir/macos/TmuxAgentAlertNotifier.app"
+}
+
+macos_native_notifier_executable() {
+  local state_dir="$1"
+
+  printf '%s\n' "$(macos_native_notifier_app_dir "$state_dir")/Contents/MacOS/TmuxAgentAlertNotifier"
+}
+
+macos_native_notifier_source() {
+  printf '%s\n' "$(macos_plugin_root)/macos/TmuxAgentAlertNotifier.swift"
+}
+
+macos_native_notifier_plist() {
+  printf '%s\n' "$(macos_plugin_root)/macos/TmuxAgentAlertNotifier-Info.plist"
+}
+
+macos_native_notifier_needs_build() {
+  local state_dir="$1"
+  local executable app_plist source source_plist
+
+  executable="$(macos_native_notifier_executable "$state_dir")"
+  app_plist="$(macos_native_notifier_app_dir "$state_dir")/Contents/Info.plist"
+  source="$(macos_native_notifier_source)"
+  source_plist="$(macos_native_notifier_plist)"
+
+  [ -x "$executable" ] || return 0
+  [ -f "$app_plist" ] || return 0
+  [ "$source" -nt "$executable" ] && return 0
+  [ "$source_plist" -nt "$app_plist" ] && return 0
+
+  return 1
+}
+
+macos_build_native_notifier() {
+  local state_dir="$1"
+  local app_dir tmp_app contents_dir macos_dir executable source source_plist build_timeout
+
+  is_macos || return 1
+  command -v swiftc >/dev/null 2>&1 || return 1
+
+  app_dir="$(macos_native_notifier_app_dir "$state_dir")"
+  tmp_app="$app_dir.tmp.$$"
+  contents_dir="$tmp_app/Contents"
+  macos_dir="$contents_dir/MacOS"
+  executable="$macos_dir/TmuxAgentAlertNotifier"
+  source="$(macos_native_notifier_source)"
+  source_plist="$(macos_native_notifier_plist)"
+  build_timeout="$(notification_build_timeout)"
+
+  [ -f "$source" ] || return 1
+  [ -f "$source_plist" ] || return 1
+
+  rm -rf "$tmp_app"
+  mkdir -p "$macos_dir" "$contents_dir/Resources" || return 1
+  cp "$source_plist" "$contents_dir/Info.plist" || {
+    rm -rf "$tmp_app"
+    return 1
+  }
+
+  if ! run_notification_command_with_timeout "$build_timeout" swiftc -O -framework UserNotifications "$source" -o "$executable"; then
+    rm -rf "$tmp_app"
+    return 1
+  fi
+
+  chmod +x "$executable" || {
+    rm -rf "$tmp_app"
+    return 1
+  }
+
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$tmp_app" >/dev/null 2>&1 || true
+  fi
+
+  rm -rf "$app_dir"
+  mv "$tmp_app" "$app_dir" || {
+    rm -rf "$tmp_app"
+    return 1
+  }
+}
+
+macos_ensure_native_notifier() {
+  local state_dir="$1"
+  local executable
+
+  is_macos || return 1
+
+  if macos_native_notifier_needs_build "$state_dir"; then
+    macos_build_native_notifier "$state_dir" || return 1
+  fi
+
+  executable="$(macos_native_notifier_executable "$state_dir")"
+  [ -x "$executable" ] || return 1
+
+  printf '%s\n' "$executable"
+}
+
+macos_display_notification_from_native() {
+  local title="$1"
+  local message="$2"
+  local state_dir="$3"
+  local subtitle="${4:-}"
+  local timeout="${5:-}"
+  local executable helper_timeout
+
+  is_macos || return 1
+
+  executable="$(macos_ensure_native_notifier "$state_dir" || true)"
+  [ -n "$executable" ] || return 1
+
+  if [ -z "$timeout" ]; then
+    timeout="$(notification_command_timeout)"
+  fi
+  helper_timeout="$timeout"
+  if [ "${helper_timeout:-0}" -le 0 ] 2>/dev/null; then
+    helper_timeout="8"
+  fi
+
+  run_notification_command_with_timeout "$timeout" "$executable" \
+    --title "$title" \
+    --subtitle "$subtitle" \
+    --message "$message" \
+    --group "tmux-agent-alert" \
+    --sound default \
+    --timeout "$helper_timeout"
+}
+
+macos_native_notifier_status() {
+  local state_dir="$1"
+  local executable
+
+  is_macos || return 1
+
+  executable="$(macos_native_notifier_executable "$state_dir")"
+  if [ -x "$executable" ]; then
+    printf '%s\n' "$executable"
+    return 0
+  fi
+
+  if command -v swiftc >/dev/null 2>&1; then
+    printf '%s\n' "available; will build on first notification"
+  else
+    printf '%s\n' "unavailable; swiftc not found"
+  fi
 }
 
 macos_display_notification_from_bundle() {

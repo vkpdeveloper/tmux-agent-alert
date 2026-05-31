@@ -32,6 +32,15 @@ notify_user() {
     off|none|disabled|tmux)
       return 1
       ;;
+    macos-native)
+      if macos_display_notification_from_native "$title" "$message" "$state_dir" "$subtitle"; then
+        return 0
+      fi
+      if macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
+        return 0
+      fi
+      return 1
+      ;;
     macos-terminal)
       if macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
         return 0
@@ -50,6 +59,9 @@ notify_user() {
       ;;
     auto)
       if is_macos; then
+        if macos_display_notification_from_native "$title" "$message" "$state_dir" "$subtitle"; then
+          return 0
+        fi
         if macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
           return 0
         fi
@@ -61,6 +73,9 @@ notify_user() {
   esac
 
   if is_macos; then
+    if macos_display_notification_from_native "$title" "$message" "$state_dir" "$subtitle"; then
+      return 0
+    fi
     if macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
       return 0
     fi
