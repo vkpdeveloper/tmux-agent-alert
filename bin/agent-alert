@@ -314,7 +314,7 @@ visual_alert_style_for_state() {
       printf '%s\n' "red"
       ;;
     DONE_WAITING_FOR_NEXT_PROMPT)
-      printf '%s\n' "red"
+      printf '%s\n' "green"
       ;;
     *)
       printf '%s\n' "default"
@@ -561,7 +561,13 @@ EOF
     title="$(notify_title_for_state "$agent" "$new_state" "$location")"
     subtitle="$(notification_subtitle_for_pane "$session" "$window_name" "$window_index" "$pane_index" "$session_attached")"
     message="$(notify_message_for_pane "$agent" "$new_state" "$session" "$window_name" "$window_index" "$pane_index" "$pane" "$path" "$context" "$session_attached")"
-    notify_user "$title" "$message" "$backend" "$webhook_url" "$STATE_DIR" "$macos_sender_bundle" "$subtitle" || show_tmux_alert_fallback "$title" "$pane"
+    if notify_user "$title" "$message" "$backend" "$webhook_url" "$STATE_DIR" "$macos_sender_bundle" "$subtitle"; then
+      if [ "$new_state" = "WAITING_FOR_PERMISSION" ]; then
+        show_tmux_alert_fallback "$title" "$pane"
+      fi
+    else
+      show_tmux_alert_fallback "$title" "$pane"
+    fi
     old_last_notified="$new_state"
     old_last_notified_at="$now"
     log_debug "notified pane=$pane agent=$agent state=$new_state reason=$reason"

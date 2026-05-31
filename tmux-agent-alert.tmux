@@ -23,25 +23,35 @@ install_status_styles() {
   tmux set-option -gq "@agent-alert-original-window-status-format" "$original_format"
   tmux set-option -gq "@agent-alert-original-window-status-current-format" "$original_current_format"
 
-  tmux set-option -gq "window-status-format" "#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}$original_format"
-  tmux set-option -gq "window-status-current-format" "#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}$original_current_format"
+  tmux set-option -gq "window-status-format" "$(agent_alert_status_prefix)$original_format"
+  tmux set-option -gq "window-status-current-format" "$(agent_alert_status_prefix)$original_current_format"
 }
 
 strip_agent_alert_status_prefix() {
   local value="$1"
   local old_prefix='#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}'
-  local new_prefix='#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}'
+  local red_yellow_prefix='#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}'
+  local red_green_prefix
+
+  red_green_prefix="$(agent_alert_status_prefix)"
 
   case "$value" in
     "$old_prefix"*)
       value="${value#"$old_prefix"}"
       ;;
-    "$new_prefix"*)
-      value="${value#"$new_prefix"}"
+    "$red_yellow_prefix"*)
+      value="${value#"$red_yellow_prefix"}"
+      ;;
+    "$red_green_prefix"*)
+      value="${value#"$red_green_prefix"}"
       ;;
   esac
 
   printf '%s\n' "$value"
+}
+
+agent_alert_status_prefix() {
+  printf '%s' '#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},green},#[bg=green,fg=black,bold],}}'
 }
 
 main() {

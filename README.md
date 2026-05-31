@@ -120,13 +120,13 @@ When an agent needs attention, the plugin also marks the tmux status-bar window 
 Default behavior:
 
 ```text
-done/idle       red bold window item
+done/idle       green bold window item
 permission      red bold window item
 silent unknown  no status marker by default
 running again   marker cleared
 ```
 
-The marker keeps the normal window label, such as `3:AI`, and changes that status-bar item to a red or yellow block. The plugin does not show a tmux message for `RUNNING`. A tmux message is shown for at least 3 seconds only when desktop notification delivery is disabled or fails.
+The marker keeps the normal window label, such as `3:AI`, and changes only that status-bar item's color. The plugin does not show a tmux message or status marker for `RUNNING`. Permission prompts show both a desktop notification and a tmux message. Completed prompts show a desktop notification, with a tmux message fallback if desktop notification delivery is disabled or fails.
 
 Disable it:
 
