@@ -71,7 +71,9 @@ agent_running_patterns() {
     codex)
       printf '%s\n' \
         '(^|[[:space:]·])working([[:space:]·]|$)' \
-        'gpt-[^[:space:]]+.*working.*context'
+        'gpt-[^[:space:]]+.*working.*context' \
+        'working \([0-9]+s[[:space:]·].*esc to interrupt\)' \
+        'esc to interrupt'
       ;;
     claude)
       printf '%s\n' \
@@ -100,6 +102,11 @@ agent_permission_patterns() {
   case "$agent" in
     codex)
       printf '%s\n' \
+        'would you like to run the following command\?' \
+        'yes, proceed \(y\)' \
+        'press enter to confirm or esc to cancel' \
+        'reason: .*allow codex' \
+        'commands? may require user approval' \
         'approve for me' \
         'approve network access' \
         'ask for approval' \
@@ -162,7 +169,11 @@ agent_done_patterns() {
         '(^|[[:space:]·])ready([[:space:]·]|$)' \
         'context [0-9]+% used.*[0-9]+%.*left' \
         'find and fix a bug in @filename' \
-        'gpt-[^[:space:]]+.*ready.*context'
+        'gpt-[^[:space:]]+.*ready.*context' \
+        'token usage: total=' \
+        'to continue this session, run codex resume' \
+        'conversation interrupted' \
+        '(^|[[:space:]])➜[[:space:]]*$'
       ;;
     claude)
       printf '%s\n' \
