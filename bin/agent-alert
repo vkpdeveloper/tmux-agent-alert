@@ -358,19 +358,11 @@ notify_message_for_pane() {
   local window_name="$4"
   local window_index="$5"
   local pane_index="$6"
-  local pane="$7"
   local context="$9"
-  local session_attached="${10:-}"
-  local reason_label short_context location attach_label
+  local reason_label short_context location
 
   short_context="$(shorten_context "$context" 140)"
   location="$(notification_location_for_pane "$session" "$window_name" "$window_index" "$pane_index")"
-
-  if [ "$session_attached" = "0" ]; then
-    attach_label="detached"
-  else
-    attach_label="attached"
-  fi
 
   case "$state" in
     WAITING_FOR_PERMISSION)
@@ -388,9 +380,9 @@ notify_message_for_pane() {
   esac
 
   if [ -n "$short_context" ]; then
-    printf '%s (%s, %s)\n%s: %s' "$location" "$pane" "$attach_label" "$reason_label" "$short_context"
+    printf '%s\n%s: %s' "$location" "$reason_label" "$short_context"
   else
-    printf '%s (%s, %s)\n%s' "$location" "$pane" "$attach_label" "$reason_label"
+    printf '%s\n%s' "$location" "$reason_label"
   fi
 }
 
@@ -399,16 +391,8 @@ notification_subtitle_for_pane() {
   local window_name="$2"
   local window_index="$3"
   local pane_index="$4"
-  local session_attached="${5:-}"
-  local label
 
-  if [ "$session_attached" = "0" ]; then
-    label="detached"
-  else
-    label="attached"
-  fi
-
-  printf '%s (%s)\n' "$(notification_location_for_pane "$session" "$window_name" "$window_index" "$pane_index")" "$label"
+  printf '%s\n' "$(notification_location_for_pane "$session" "$window_name" "$window_index" "$pane_index")"
 }
 
 pane_location() {
