@@ -3,6 +3,7 @@
 # Rules are extended regular expressions, matched case-insensitively against
 # cleaned pane text after silence is detected.
 
+# shellcheck disable=SC2034
 AGENT_ALERT_KNOWN_AGENTS="codex,claude,opencode,pi"
 
 agent_commands() {

@@ -168,6 +168,7 @@ macos_display_notification_from_bundle() {
   local title="$2"
   local message="$3"
   local require_running="${4:-no}"
+  local subtitle="${5:-}"
 
   is_macos || return 1
   [ -n "$bundle_id" ] || return 1
@@ -177,10 +178,17 @@ macos_display_notification_from_bundle() {
     return 1
   fi
 
-  osascript \
-    -e "tell application id \"$(macos_escape_applescript "$bundle_id")\"" \
-    -e "display notification \"$(macos_escape_applescript "$message")\" with title \"$(macos_escape_applescript "$title")\"" \
-    -e "end tell" >/dev/null 2>&1
+  if [ -n "$subtitle" ]; then
+    osascript \
+      -e "tell application id \"$(macos_escape_applescript "$bundle_id")\"" \
+      -e "display notification \"$(macos_escape_applescript "$message")\" with title \"$(macos_escape_applescript "$title")\" subtitle \"$(macos_escape_applescript "$subtitle")\"" \
+      -e "end tell" >/dev/null 2>&1
+  else
+    osascript \
+      -e "tell application id \"$(macos_escape_applescript "$bundle_id")\"" \
+      -e "display notification \"$(macos_escape_applescript "$message")\" with title \"$(macos_escape_applescript "$title")\"" \
+      -e "end tell" >/dev/null 2>&1
+  fi
 }
 
 macos_display_notification_from_terminal() {
@@ -188,6 +196,7 @@ macos_display_notification_from_terminal() {
   local message="$2"
   local state_dir="$3"
   local preferred_bundle="${4:-}"
+  local subtitle="${5:-}"
   local bundle_id
   local require_running="yes"
 
@@ -202,6 +211,13 @@ macos_display_notification_from_terminal() {
 
   [ -n "$bundle_id" ] || return 1
 
-  macos_display_notification_from_bundle "$bundle_id" "$title" "$message" "$require_running"
-}
+  if command -v terminal-notifier >/dev/null 2>&1; then
+    if [ -n "$subtitle" ]; then
+      terminal-notifier -sender "$bundle_id" -title "$title" -subtitle "$subtitle" -message "$message" >/dev/null 2>&1 && return 0
+    else
+      terminal-notifier -sender "$bundle_id" -title "$title" -message "$message" >/dev/null 2>&1 && return 0
+    fi
+  fi
 
+  macos_display_notification_from_bundle "$bundle_id" "$title" "$message" "$require_running" "$subtitle"
+}

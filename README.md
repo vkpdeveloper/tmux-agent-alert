@@ -170,3 +170,9 @@ Run syntax checks:
 ```sh
 bash -n tmux-agent-alert.tmux bin/agent-alert lib/*.sh config/default-rules.sh
 ```
+
+Run lint checks:
+
+```sh
+shellcheck -x tmux-agent-alert.tmux bin/agent-alert lib/*.sh config/default-rules.sh
+```
