@@ -248,7 +248,6 @@ macos_display_notification_from_terminal() {
   local subtitle="${5:-}"
   local bundle_id
   local require_running="yes"
-  local timeout
 
   is_macos || return 1
 
@@ -260,18 +259,6 @@ macos_display_notification_from_terminal() {
   fi
 
   [ -n "$bundle_id" ] || return 1
-
-  timeout="$(notification_command_timeout)"
-
-  if command -v terminal-notifier >/dev/null 2>&1; then
-    if [ -n "$subtitle" ]; then
-      run_notification_command_with_timeout "$timeout" terminal-notifier -sender "$bundle_id" -title "$title" -subtitle "$subtitle" -message "$message" && return 0
-      run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -subtitle "$subtitle" -message "$message" && return 0
-    else
-      run_notification_command_with_timeout "$timeout" terminal-notifier -sender "$bundle_id" -title "$title" -message "$message" && return 0
-      run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -message "$message" && return 0
-    fi
-  fi
 
   macos_display_notification_from_bundle "$bundle_id" "$title" "$message" "$require_running" "$subtitle"
 }

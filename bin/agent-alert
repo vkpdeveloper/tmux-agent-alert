@@ -47,6 +47,78 @@ now_epoch() {
   date +%s
 }
 
+positive_integer_option() {
+  local option="$1"
+  local default_value="$2"
+  local fallback_value="${3:-$2}"
+  local value
+
+  value="$(get_tmux_option "$option" "$default_value")"
+  case "$value" in
+    ''|*[!0-9]*)
+      value="$default_value"
+      ;;
+    *)
+      if [ "$value" -gt 0 ] 2>/dev/null; then
+        printf '%s\n' "$value"
+        return
+      fi
+      value="$default_value"
+      ;;
+  esac
+
+  case "$value" in
+    ''|*[!0-9]*)
+      printf '%s\n' "$fallback_value"
+      ;;
+    *)
+      if [ "$value" -gt 0 ] 2>/dev/null; then
+        printf '%s\n' "$value"
+      else
+        printf '%s\n' "$fallback_value"
+      fi
+      ;;
+  esac
+}
+
+nonnegative_integer_option() {
+  local option="$1"
+  local default_value="$2"
+  local fallback_value="${3:-$2}"
+  local value
+
+  value="$(get_tmux_option "$option" "$default_value")"
+  case "$value" in
+    ''|*[!0-9]*)
+      value="$default_value"
+      ;;
+    *)
+      printf '%s\n' "$value"
+      return
+      ;;
+  esac
+
+  case "$value" in
+    ''|*[!0-9]*)
+      printf '%s\n' "$fallback_value"
+      ;;
+    *)
+      printf '%s\n' "$value"
+      ;;
+  esac
+}
+
+poll_interval_option() {
+  local value
+
+  value="$(get_tmux_option "@agent-alert-poll-interval" "${AGENT_ALERT_POLL_INTERVAL:-1}")"
+  if printf '%s\n' "$value" | awk '/^[0-9]+([.][0-9]+)?$/ && $1 > 0 { found = 1 } END { exit found ? 0 : 1 }'; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "1"
+  fi
+}
+
 ensure_state_dir() {
   mkdir -p "$STATE_DIR"
 }
@@ -515,7 +587,7 @@ request_macos_permission() {
 
   backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"
   case "$backend" in
-    auto|macos-terminal|osascript)
+    auto|macos-terminal)
       ;;
     *)
       return 0
@@ -587,13 +659,12 @@ check_pane() {
   local session_attached="$9"
   local inspect="${10:-no}"
 
-  local poll_interval silence_threshold capture_lines notify_unknown cooldown min_runtime backend webhook_url macos_sender_bundle enabled_agents
-  poll_interval="$(get_tmux_option "@agent-alert-poll-interval" "${AGENT_ALERT_POLL_INTERVAL:-2}")"
-  silence_threshold="$(get_tmux_option "@agent-alert-silence-threshold" "${AGENT_ALERT_SILENCE_THRESHOLD:-45}")"
-  capture_lines="$(get_tmux_option "@agent-alert-capture-lines" "${AGENT_ALERT_CAPTURE_LINES:-200}")"
+  local silence_threshold capture_lines notify_unknown cooldown min_runtime backend webhook_url macos_sender_bundle enabled_agents
+  silence_threshold="$(positive_integer_option "@agent-alert-silence-threshold" "${AGENT_ALERT_SILENCE_THRESHOLD:-3}" "3")"
+  capture_lines="$(positive_integer_option "@agent-alert-capture-lines" "${AGENT_ALERT_CAPTURE_LINES:-200}" "200")"
   notify_unknown="$(get_tmux_option "@agent-alert-notify-silent-unknown" "${AGENT_ALERT_NOTIFY_SILENT_UNKNOWN:-off}")"
-  cooldown="$(get_tmux_option "@agent-alert-cooldown" "${AGENT_ALERT_COOLDOWN:-300}")"
-  min_runtime="$(get_tmux_option "@agent-alert-min-runtime" "${AGENT_ALERT_MIN_RUNTIME:-8}")"
+  cooldown="$(nonnegative_integer_option "@agent-alert-cooldown" "${AGENT_ALERT_COOLDOWN:-300}" "300")"
+  min_runtime="$(nonnegative_integer_option "@agent-alert-min-runtime" "${AGENT_ALERT_MIN_RUNTIME:-8}" "8")"
   backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"
   webhook_url="$(get_tmux_option "@agent-alert-webhook-url" "${AGENT_ALERT_WEBHOOK_URL:-}")"
   macos_sender_bundle="$(macos_sender_bundle_option)"
@@ -791,7 +862,7 @@ watch_loop() {
     fi
 
     local poll_interval
-    poll_interval="$(get_tmux_option "@agent-alert-poll-interval" "${AGENT_ALERT_POLL_INTERVAL:-2}")"
+    poll_interval="$(poll_interval_option)"
 
     while IFS='|' read -r pane session window_name window_index pane_index pane_pid command path session_attached; do
       [ -n "$pane" ] || continue

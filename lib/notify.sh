@@ -11,10 +11,6 @@ json_escape() {
   }
 }
 
-osascript_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-}
-
 notify_user() {
   local title="$1"
   local message="$2"
@@ -37,31 +33,10 @@ notify_user() {
       return 1
       ;;
     macos-terminal)
-      macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle" && return
-      ;;
-    terminal-notifier)
-      command -v terminal-notifier >/dev/null 2>&1 && {
-        local timeout
-        timeout="$(notification_command_timeout)"
-        if [ -n "$subtitle" ]; then
-          run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -subtitle "$subtitle" -message "$message"
-        else
-          run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -message "$message"
-        fi
-        return
-      }
-      ;;
-    osascript)
-      command -v osascript >/dev/null 2>&1 && {
-        local timeout
-        timeout="$(notification_command_timeout)"
-        if [ -n "$subtitle" ]; then
-          run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\" subtitle \"$(osascript_escape "$subtitle")\""
-        else
-          run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\""
-        fi
-        return
-      }
+      if macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
+        return 0
+      fi
+      return 1
       ;;
     notify-send)
       command -v notify-send >/dev/null 2>&1 && {
@@ -74,31 +49,26 @@ notify_user() {
       return
       ;;
     auto)
-      if is_macos && macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
-        return
+      if is_macos; then
+        if macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
+          return 0
+        fi
+        return 1
       fi
       ;;
     *)
       ;;
   esac
 
-  if command -v terminal-notifier >/dev/null 2>&1; then
-    local timeout
-    timeout="$(notification_command_timeout)"
-    if [ -n "$subtitle" ]; then
-      run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -subtitle "$subtitle" -message "$message"
-    else
-      run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -message "$message"
+  if is_macos; then
+    if macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
+      return 0
     fi
-  elif command -v osascript >/dev/null 2>&1; then
-    local timeout
-    timeout="$(notification_command_timeout)"
-    if [ -n "$subtitle" ]; then
-      run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\" subtitle \"$(osascript_escape "$subtitle")\""
-    else
-      run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\""
-    fi
-  elif command -v notify-send >/dev/null 2>&1; then
+    printf '\a'
+    return 1
+  fi
+
+  if command -v notify-send >/dev/null 2>&1; then
     notify-send "$title" "$message"
   else
     printf '\a'

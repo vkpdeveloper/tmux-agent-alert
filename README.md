@@ -5,7 +5,7 @@ A tmux plugin that watches CLI coding agents across tmux panes and notifies when
 The first version uses a practical state machine:
 
 ```text
-capture-pane -> clean ANSI -> hash screen text -> wait for silence -> match rules -> notify once per transition
+capture-pane -> clean ANSI -> hash screen text -> match urgent prompts -> wait for a short stable window -> notify once per transition
 ```
 
 ## Supported Agents
@@ -23,15 +23,7 @@ The rules are intentionally editable because agent TUIs change over time and tmu
 
 - tmux
 - Bash and standard Unix tools such as `awk`, `sed`, `grep`, `ps`, `pgrep`, and `shasum` or `sha256sum`
-- macOS native notifications: [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) is recommended for reliable visible banners
-
-On macOS, install the notification helper first:
-
-```sh
-brew install terminal-notifier
-```
-
-The plugin has an AppleScript fallback, but recent macOS versions can accept that notification without presenting a visible banner. `terminal-notifier` is the reliable path for native macOS alerts.
+- macOS native notifications are sent through the terminal app currently attached to tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
 
 ## Install
 
@@ -82,7 +74,7 @@ Check that the watcher is running:
 ~/.tmux/plugins/tmux-agent-alert/bin/agent-alert status
 ```
 
-If `test-notify` exits but no macOS banner appears, check System Settings -> Notifications and allow notifications for `terminal-notifier`. If you force sender-specific notification delivery, also allow notifications for the terminal app running tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
+If `test-notify` exits but no macOS banner appears, check System Settings -> Notifications and allow notifications for the terminal app running tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
 
 ## Usage
 
@@ -114,8 +106,8 @@ set -g @agent-alert-key 'A'
 set -g @agent-alert-inspect-key 'M-i'
 
 set -g @agent-alert-agents 'codex,claude,opencode,pi'
-set -g @agent-alert-poll-interval '2'
-set -g @agent-alert-silence-threshold '45'
+set -g @agent-alert-poll-interval '1'
+set -g @agent-alert-silence-threshold '3'
 set -g @agent-alert-capture-lines '200'
 set -g @agent-alert-min-runtime '8'
 set -g @agent-alert-cooldown '300'
@@ -137,16 +129,14 @@ Notification backends:
 ```text
 auto
 macos-terminal
-terminal-notifier
-osascript
 notify-send
 tmux
 bell
 ```
 
-On macOS, `auto` first tries `macos-terminal`, which detects the terminal app attached to the tmux client and sends the notification through that app bundle. This makes macOS request notification permission for the terminal actually running tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
+On macOS, `auto` uses `macos-terminal`, which detects the terminal app attached to the tmux client and sends the notification through that app bundle. This makes macOS request notification permission for the terminal actually running tmux, such as Ghostty, Terminal.app, iTerm2, WezTerm, kitty, Alacritty, or Warp.
 
-If sender-specific delivery fails or hangs, `auto` falls back to plain `terminal-notifier`, then generic `osascript`, then `notify-send`, then tmux display messages, then terminal bell. Native notification commands are timeout-guarded so a stuck helper should not block the agent-alert command indefinitely.
+If terminal-app delivery fails or hangs, the caller falls back to tmux display messages where appropriate, then terminal bell. Native notification commands are timeout-guarded so a stuck helper should not block the agent-alert command indefinitely.
 
 To force a specific macOS sender bundle:
 
