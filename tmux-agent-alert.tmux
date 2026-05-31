@@ -8,6 +8,8 @@ CURRENT_DIR="$(cd "$(dirname "$0")" && pwd)"
 install_status_styles() {
   original_format="$(tmux show-option -gqv "@agent-alert-original-window-status-format")"
   original_current_format="$(tmux show-option -gqv "@agent-alert-original-window-status-current-format")"
+  original_style="$(tmux show-option -gqv "@agent-alert-original-window-status-style")"
+  original_current_style="$(tmux show-option -gqv "@agent-alert-original-window-status-current-style")"
 
   if [ -z "$original_format" ]; then
     original_format="$(tmux show-option -gqv "window-status-format")"
@@ -20,11 +22,23 @@ install_status_styles() {
   original_format="$(strip_agent_alert_status_prefix "$original_format")"
   original_current_format="$(strip_agent_alert_status_prefix "$original_current_format")"
 
+  if [ -z "$original_style" ]; then
+    original_style="$(strip_agent_alert_status_style "$(tmux show-option -gqv "window-status-style")")"
+  fi
+
+  if [ -z "$original_current_style" ]; then
+    original_current_style="$(strip_agent_alert_status_style "$(tmux show-option -gqv "window-status-current-style")")"
+  fi
+
   tmux set-option -gq "@agent-alert-original-window-status-format" "$original_format"
   tmux set-option -gq "@agent-alert-original-window-status-current-format" "$original_current_format"
+  tmux set-option -gq "@agent-alert-original-window-status-style" "$original_style"
+  tmux set-option -gq "@agent-alert-original-window-status-current-style" "$original_current_style"
 
-  tmux set-option -gq "window-status-format" "$(agent_alert_status_prefix)$original_format"
-  tmux set-option -gq "window-status-current-format" "$(agent_alert_status_prefix)$original_current_format"
+  tmux set-option -gq "window-status-format" "$original_format"
+  tmux set-option -gq "window-status-current-format" "$original_current_format"
+  tmux set-option -gq "window-status-style" "$(agent_alert_status_style "$original_style")"
+  tmux set-option -gq "window-status-current-style" "$(agent_alert_status_style "$original_current_style")"
 }
 
 strip_agent_alert_status_prefix() {
@@ -56,6 +70,29 @@ strip_agent_alert_status_prefix() {
 
 agent_alert_status_prefix() {
   printf '%s' '#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=white,bold],#{?#{==:#{@agent-alert-attention},green},#[bg=green,fg=white,bold],}}'
+}
+
+strip_agent_alert_status_style() {
+  local value="$1"
+
+  case "$value" in
+    *"@agent-alert-attention"*)
+      printf '%s\n' ""
+      ;;
+    *)
+      printf '%s\n' "$value"
+      ;;
+  esac
+}
+
+escape_tmux_format_commas() {
+  printf '%s' "$1" | sed 's/,/#,/g'
+}
+
+agent_alert_status_style() {
+  local original_style="$1"
+
+  printf '%s' "#{?#{==:#{@agent-alert-attention},red},bg=red#,fg=white#,bold,#{?#{==:#{@agent-alert-attention},green},bg=green#,fg=white#,bold,$(escape_tmux_format_commas "$original_style")}}"
 }
 
 main() {

@@ -100,6 +100,20 @@ running_pid() {
   return 1
 }
 
+dedupe_watchers() {
+  local keep="" pid pids
+
+  pids="$(watcher_pids)"
+  for pid in $pids; do
+    if [ -z "$keep" ]; then
+      keep="$pid"
+      printf '%s\n' "$keep" > "$PID_FILE"
+    else
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
 state_file_for_pane() {
   local pane="$1"
   printf '%s/%s.state\n' "$STATE_DIR" "${pane#%}"
@@ -496,7 +510,7 @@ check_pane() {
     old_last_changed="$now"
   elif [ "$hash" != "$old_hash" ]; then
     local detection candidate_state candidate_reason
-    detection="$(detect_silent_state "$agent" "$analysis_text")"
+    detection="$(detect_active_state "$agent" "$analysis_text")"
     candidate_state="${detection%%$'\t'*}"
     candidate_reason="${detection#*$'\t'}"
 
@@ -637,6 +651,7 @@ watch_loop() {
 start_watcher() {
   ensure_state_dir
   request_macos_permission "no" || true
+  dedupe_watchers
 
   if running_pid >/dev/null; then
     printf 'tmux-agent-alert already running (pid %s)\n' "$(running_pid)"
@@ -667,6 +682,11 @@ stop_watcher() {
   if [ -n "$pids" ]; then
     # shellcheck disable=SC2086
     kill $pids >/dev/null 2>&1 || true
+    local _wait
+    for _wait in 1 2 3 4 5; do
+      [ -z "$(watcher_pids)" ] && break
+      sleep 0.2
+    done
   else
     kill "$pid" >/dev/null 2>&1 || true
   fi

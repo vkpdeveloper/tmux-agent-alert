@@ -123,16 +123,6 @@ detect_silent_state() {
 
   while IFS= read -r pattern; do
     patterns+=("$pattern")
-  done < <(agent_running_patterns "$agent")
-
-  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
-    printf '%s\t%s\n' "RUNNING" "$pattern"
-    return
-  fi
-
-  patterns=()
-  while IFS= read -r pattern; do
-    patterns+=("$pattern")
   done < <(agent_permission_patterns "$agent")
 
   if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
@@ -150,5 +140,43 @@ detect_silent_state() {
     return
   fi
 
+  patterns=()
+  while IFS= read -r pattern; do
+    patterns+=("$pattern")
+  done < <(agent_running_patterns "$agent")
+
+  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "RUNNING" "$pattern"
+    return
+  fi
+
   printf '%s\t%s\n' "SILENT_UNKNOWN" "no matching idle or permission pattern"
+}
+
+detect_active_state() {
+  local agent="$1"
+  local content="$2"
+  local pattern
+  local patterns=()
+
+  while IFS= read -r pattern; do
+    patterns+=("$pattern")
+  done < <(agent_permission_patterns "$agent")
+
+  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "WAITING_FOR_PERMISSION" "$pattern"
+    return
+  fi
+
+  patterns=()
+  while IFS= read -r pattern; do
+    patterns+=("$pattern")
+  done < <(agent_running_patterns "$agent")
+
+  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "RUNNING" "$pattern"
+    return
+  fi
+
+  printf '%s\t%s\n' "RUNNING" "pane output changed"
 }
