@@ -55,6 +55,10 @@ log_debug() {
   enabled="$(get_tmux_option "@agent-alert-debug" "${AGENT_ALERT_DEBUG:-off}")"
   is_enabled "$enabled" || return 0
 
+  log_event "$*"
+}
+
+log_event() {
   ensure_state_dir
   printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >> "$LOG_FILE"
 }
@@ -599,7 +603,7 @@ watch_loop() {
 
   while true; do
     if ! tmux_has_session; then
-      log_debug "tmux server unavailable, exiting"
+      log_event "tmux server unavailable, exiting"
       exit 0
     fi
 
@@ -629,7 +633,7 @@ start_watcher() {
     return 1
   fi
 
-  nohup "$0" watch >/dev/null 2>&1 &
+  nohup "$0" watch >> "$LOG_FILE" 2>&1 &
   echo "$!" > "$PID_FILE"
   printf 'tmux-agent-alert started (pid %s)\n' "$!"
 }
