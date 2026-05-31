@@ -27,7 +27,7 @@ matches_any_pattern() {
   local pattern
   for pattern in "$@"; do
     [ -z "$pattern" ] && continue
-    if printf '%s\n' "$content" | grep -Eiq "$pattern"; then
+    if printf '%s\n' "$content" | grep -Eiq -- "$pattern"; then
       printf '%s\n' "$pattern"
       return 0
     fi
@@ -93,7 +93,7 @@ detect_agent() {
 
     while IFS= read -r candidate; do
       [ -z "$candidate" ] && continue
-      if printf '%s\n' "$process_haystack" | grep -Eiq "(^|[^[:alnum:]_-])${candidate}([^[:alnum:]_-]|$)"; then
+      if printf '%s\n' "$process_haystack" | grep -Eiq -- "(^|[^[:alnum:]_-])${candidate}([^[:alnum:]_-]|$)"; then
         printf '%s\n' "$agent"
         return 0
       fi
@@ -105,7 +105,7 @@ detect_agent() {
 
     while IFS= read -r candidate; do
       [ -z "$candidate" ] && continue
-      if printf '%s\n' "$content_haystack" | grep -Eiq "$candidate"; then
+      if printf '%s\n' "$content_haystack" | grep -Eiq -- "$candidate"; then
         printf '%s\n' "$agent"
         return 0
       fi
