@@ -337,19 +337,32 @@ set_visual_alert() {
   local state="$2"
   local _agent="$3"
   local _location="$4"
-  local window_target flag_message
+  local window_target style
 
   visual_alert_enabled || return 0
   window_target="$(tmux display-message -p -t "$pane" '#{session_name}:#{window_index}' 2>/dev/null || true)"
   [ -n "$window_target" ] || return 0
 
   if visual_alert_state_is_attention "$state"; then
-    flag_message="$(notify_title_for_state "$_agent" "$state" "$_location")"
-    tmux set-window-option -q -t "$window_target" monitor-activity on 2>/dev/null || true
-    tmux display-message -t "$window_target" "$flag_message" 2>/dev/null || true
+    style="$(visual_alert_style_for_state "$state")"
+    tmux set-window-option -q -t "$window_target" "@agent-alert-attention" "$style" 2>/dev/null || true
   else
-    tmux set-window-option -q -t "$window_target" monitor-activity off 2>/dev/null || true
+    tmux set-window-option -qu -t "$window_target" "@agent-alert-attention" 2>/dev/null || true
   fi
+}
+
+show_tmux_alert_fallback() {
+  local title="$1"
+  local pane="$2"
+  local display_time
+
+  display_time="$(get_tmux_option "@agent-alert-tmux-message-duration" "${AGENT_ALERT_TMUX_MESSAGE_DURATION:-3000}")"
+
+  if [ "${display_time:-0}" -lt 3000 ] 2>/dev/null; then
+    display_time="3000"
+  fi
+
+  tmux display-message -d "$display_time" -t "$pane" "$title" 2>/dev/null || tmux display-message -d "$display_time" "$title" 2>/dev/null || true
 }
 
 request_macos_permission() {
@@ -547,7 +560,7 @@ EOF
     title="$(notify_title_for_state "$agent" "$new_state" "$location")"
     subtitle="$(notification_subtitle_for_pane "$session" "$window_name" "$window_index" "$pane_index" "$session_attached")"
     message="$(notify_message_for_pane "$agent" "$new_state" "$session" "$window_name" "$window_index" "$pane_index" "$pane" "$path" "$context" "$session_attached")"
-    notify_user "$title" "$message" "$backend" "$webhook_url" "$STATE_DIR" "$macos_sender_bundle" "$subtitle"
+    notify_user "$title" "$message" "$backend" "$webhook_url" "$STATE_DIR" "$macos_sender_bundle" "$subtitle" || show_tmux_alert_fallback "$title" "$pane"
     old_last_notified="$new_state"
     old_last_notified_at="$now"
     log_debug "notified pane=$pane agent=$agent state=$new_state reason=$reason"

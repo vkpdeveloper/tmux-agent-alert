@@ -84,6 +84,7 @@ set -g @agent-alert-visual-alert 'on'
 set -g @agent-alert-visual-done-style 'fg=red,bold'
 set -g @agent-alert-visual-permission-style 'fg=red,bold'
 set -g @agent-alert-visual-silent-style 'fg=yellow,bold'
+set -g @agent-alert-tmux-message-duration '3000'
 ```
 
 Notification backends:
@@ -127,6 +128,8 @@ permission      red bold window item
 silent unknown  yellow bold window item
 running again   marker cleared
 ```
+
+The plugin does not show a tmux message for `RUNNING`. A tmux message is shown for at least 3 seconds only when desktop notification delivery is disabled or fails.
 
 Disable it:
 

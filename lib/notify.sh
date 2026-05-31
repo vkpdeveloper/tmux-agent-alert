@@ -33,6 +33,9 @@ notify_user() {
   fi
 
   case "$backend" in
+    off|none|disabled|tmux)
+      return 1
+      ;;
     macos-terminal)
       macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle" && return
       ;;
@@ -66,10 +69,6 @@ notify_user() {
       printf '\a'
       return
       ;;
-    tmux)
-      tmux display-message "$title: $message" 2>/dev/null || true
-      return
-      ;;
     auto)
       if is_macos && macos_display_notification_from_terminal "$title" "$message" "$state_dir" "$macos_sender_bundle" "$subtitle"; then
         return
@@ -93,9 +92,8 @@ notify_user() {
     fi
   elif command -v notify-send >/dev/null 2>&1; then
     notify-send "$title" "$message"
-  elif tmux display-message "$title: $message" 2>/dev/null; then
-    true
   else
     printf '\a'
+    return 1
   fi
 }
