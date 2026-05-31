@@ -337,17 +337,18 @@ set_visual_alert() {
   local state="$2"
   local _agent="$3"
   local _location="$4"
-  local window_target style
+  local window_target flag_message
 
   visual_alert_enabled || return 0
   window_target="$(tmux display-message -p -t "$pane" '#{session_name}:#{window_index}' 2>/dev/null || true)"
   [ -n "$window_target" ] || return 0
 
   if visual_alert_state_is_attention "$state"; then
-    style="$(visual_alert_style_for_state "$state")"
-    tmux set-window-option -q -t "$window_target" "@agent-alert-attention" "$style" 2>/dev/null || true
+    flag_message="$(notify_title_for_state "$_agent" "$state" "$_location")"
+    tmux set-window-option -q -t "$window_target" monitor-activity on 2>/dev/null || true
+    tmux display-message -t "$window_target" "$flag_message" 2>/dev/null || true
   else
-    tmux set-window-option -qu -t "$window_target" "@agent-alert-attention" 2>/dev/null || true
+    tmux set-window-option -q -t "$window_target" monitor-activity off 2>/dev/null || true
   fi
 }
 

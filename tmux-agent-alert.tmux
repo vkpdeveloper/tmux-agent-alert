@@ -6,21 +6,20 @@ CURRENT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$CURRENT_DIR/lib/tmux.sh"
 
 install_status_styles() {
-  original_format="$(tmux show-option -gqv "@agent-alert-original-window-status-format")"
-  original_current_format="$(tmux show-option -gqv "@agent-alert-original-window-status-current-format")"
+  original_format="$(tmux show-option -gqv "window-status-format")"
+  original_current_format="$(tmux show-option -gqv "window-status-current-format")"
 
-  if [ -z "$original_format" ]; then
-    original_format="$(tmux show-option -gqv "window-status-format")"
-    tmux set-option -gq "@agent-alert-original-window-status-format" "$original_format"
-  fi
+  case "$original_format" in
+    *"@agent-alert-attention"*)
+      return
+      ;;
+  esac
 
-  if [ -z "$original_current_format" ]; then
-    original_current_format="$(tmux show-option -gqv "window-status-current-format")"
-    tmux set-option -gq "@agent-alert-original-window-status-current-format" "$original_current_format"
-  fi
+  tmux set-option -gq "@agent-alert-original-window-status-format" "$original_format"
+  tmux set-option -gq "@agent-alert-original-window-status-current-format" "$original_current_format"
 
-  tmux set-option -gq "window-status-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}#{@agent-alert-original-window-status-format}"
-  tmux set-option -gq "window-status-current-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}#{@agent-alert-original-window-status-current-format}"
+  tmux set-option -gq "window-status-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}$original_format"
+  tmux set-option -gq "window-status-current-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}$original_current_format"
 }
 
 main() {
