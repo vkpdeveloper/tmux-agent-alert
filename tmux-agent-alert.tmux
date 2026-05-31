@@ -31,6 +31,7 @@ strip_agent_alert_status_prefix() {
   local value="$1"
   local old_prefix='#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}'
   local red_yellow_prefix='#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}'
+  local red_green_black_prefix='#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},green},#[bg=green,fg=black,bold],}}'
   local red_green_prefix
 
   red_green_prefix="$(agent_alert_status_prefix)"
@@ -42,6 +43,9 @@ strip_agent_alert_status_prefix() {
     "$red_yellow_prefix"*)
       value="${value#"$red_yellow_prefix"}"
       ;;
+    "$red_green_black_prefix"*)
+      value="${value#"$red_green_black_prefix"}"
+      ;;
     "$red_green_prefix"*)
       value="${value#"$red_green_prefix"}"
       ;;
@@ -51,7 +55,7 @@ strip_agent_alert_status_prefix() {
 }
 
 agent_alert_status_prefix() {
-  printf '%s' '#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},green},#[bg=green,fg=black,bold],}}'
+  printf '%s' '#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=white,bold],#{?#{==:#{@agent-alert-attention},green},#[bg=green,fg=white,bold],}}'
 }
 
 main() {
