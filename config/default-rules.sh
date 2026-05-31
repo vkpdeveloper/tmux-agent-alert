@@ -86,7 +86,10 @@ agent_running_patterns() {
       ;;
     opencode)
       printf '%s\n' \
-        'opencode.*working'
+        'opencode.*working' \
+        'thought: .* · [0-9.]+(ms|s)' \
+        'esc interrupt' \
+        'ctrl\+p commands'
       ;;
     pi)
       printf '%s\n' \
@@ -137,6 +140,13 @@ agent_permission_patterns() {
       ;;
     opencode)
       printf '%s\n' \
+        'permission required' \
+        'allow once' \
+        'allow always' \
+        'reject' \
+        'enter confirm' \
+        'read \.env' \
+        'path: ' \
         '"ask".*prompt for approval' \
         'permission.*ask' \
         'allow all operations' \
@@ -201,7 +211,11 @@ agent_done_patterns() {
       printf '%s\n' \
         'opencode.*ready' \
         'new message' \
-        'send a message'
+        'send a message' \
+        'build · gpt-[^[:space:]]+ · [0-9.]+s' \
+        'build · gpt-[^[:space:]]+ github copilot · high' \
+        'if you want, i can next:' \
+        'openCode [0-9]+\.[0-9]+\.[0-9]+'
       ;;
     pi)
       printf '%s\n' \
