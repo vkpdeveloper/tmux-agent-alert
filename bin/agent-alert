@@ -1,0 +1,523 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=../lib/tmux.sh
+. "$ROOT_DIR/lib/tmux.sh"
+# shellcheck source=../lib/notify.sh
+. "$ROOT_DIR/lib/notify.sh"
+# shellcheck source=../config/default-rules.sh
+. "$ROOT_DIR/config/default-rules.sh"
+
+CUSTOM_RULES="${XDG_CONFIG_HOME:-$HOME/.config}/tmux-agent-alert/rules.sh"
+if [ -f "$CUSTOM_RULES" ]; then
+  # shellcheck source=/dev/null
+  . "$CUSTOM_RULES"
+fi
+
+# shellcheck source=../lib/detect.sh
+. "$ROOT_DIR/lib/detect.sh"
+
+STATE_DIR="${AGENT_ALERT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tmux-agent-alert}"
+PID_FILE="$STATE_DIR/watch.pid"
+LOG_FILE="$STATE_DIR/watch.log"
+
+usage() {
+  cat <<'EOF'
+Usage: agent-alert <command>
+
+Commands:
+  start                 Start the watcher daemon
+  stop                  Stop the watcher daemon
+  restart               Restart the watcher daemon
+  toggle                Start or stop the watcher daemon
+  status                Print watcher status
+  watch                 Run watcher loop in the foreground
+  inspect-pane [pane]   Explain current detection for a pane
+  request-permission    Request macOS notification permission for this terminal
+  test-notify           Send a test notification
+  pane-exited <pane>    Remove state for an exited pane
+EOF
+}
+
+now_epoch() {
+  date +%s
+}
+
+ensure_state_dir() {
+  mkdir -p "$STATE_DIR"
+}
+
+log_debug() {
+  local enabled
+  enabled="$(get_tmux_option "@agent-alert-debug" "${AGENT_ALERT_DEBUG:-off}")"
+  is_enabled "$enabled" || return 0
+
+  ensure_state_dir
+  printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >> "$LOG_FILE"
+}
+
+pid_alive() {
+  local pid="${1:-}"
+  [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1
+}
+
+running_pid() {
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if pid_alive "$pid"; then
+      printf '%s\n' "$pid"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+state_file_for_pane() {
+  local pane="$1"
+  printf '%s/%s.state\n' "$STATE_DIR" "${pane#%}"
+}
+
+state_get() {
+  local file="$1"
+  local key="$2"
+  local default_value="${3:-}"
+
+  if [ ! -f "$file" ]; then
+    printf '%s\n' "$default_value"
+    return
+  fi
+
+  awk -F '\t' -v key="$key" -v default_value="$default_value" '
+    $1 == key {
+      sub(/^[^\t]*\t/, "")
+      print
+      found = 1
+      exit
+    }
+    END {
+      if (!found) {
+        print default_value
+      }
+    }
+  ' "$file"
+}
+
+write_state() {
+  local file="$1"
+  shift
+  local tmp="$file.tmp"
+
+  : > "$tmp"
+  while [ "$#" -gt 0 ]; do
+    printf '%s\t%s\n' "$1" "$2" >> "$tmp"
+    shift 2
+  done
+
+  mv "$tmp" "$file"
+}
+
+capture_clean_pane() {
+  local pane="$1"
+  local capture_lines="$2"
+
+  tmux capture-pane -p -t "$pane" -S "-$capture_lines" 2>/dev/null | clean_ansi
+}
+
+enabled_agents_option() {
+  get_tmux_option "@agent-alert-agents" "${AGENT_ALERT_AGENTS:-$AGENT_ALERT_KNOWN_AGENTS}"
+}
+
+notify_title_for_state() {
+  case "$1" in
+    WAITING_FOR_PERMISSION)
+      printf '%s\n' "Agent needs approval"
+      ;;
+    DONE_WAITING_FOR_NEXT_PROMPT)
+      printf '%s\n' "Agent is waiting"
+      ;;
+    SILENT_UNKNOWN)
+      printf '%s\n' "Agent went silent"
+      ;;
+    *)
+      printf '%s\n' "Agent state changed"
+      ;;
+  esac
+}
+
+notify_message_for_pane() {
+  local agent="$1"
+  local state="$2"
+  local session="$3"
+  local window_name="$4"
+  local window_index="$5"
+  local pane_index="$6"
+  local pane="$7"
+  local path="$8"
+  local context="$9"
+
+  printf '%s %s in %s:%s.%s (%s)\nPath: %s\n%s' \
+    "$agent" "$state" "$session" "$window_index" "$pane_index" "$pane" "$path" "$context"
+}
+
+macos_sender_bundle_option() {
+  get_tmux_option "@agent-alert-macos-sender-bundle" "${AGENT_ALERT_MACOS_SENDER_BUNDLE:-auto}"
+}
+
+request_macos_permission() {
+  local force="${1:-no}"
+  local enabled backend bundle marker_key marker_file resolved_bundle
+
+  is_macos || return 0
+
+  enabled="$(get_tmux_option "@agent-alert-request-macos-permission" "${AGENT_ALERT_REQUEST_MACOS_PERMISSION:-on}")"
+  is_enabled "$enabled" || return 0
+
+  backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"
+  case "$backend" in
+    auto|macos-terminal|osascript)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  ensure_state_dir
+  bundle="$(macos_sender_bundle_option)"
+  resolved_bundle="$bundle"
+
+  if [ "$bundle" = "auto" ] || [ -z "$bundle" ]; then
+    resolved_bundle="$(macos_terminal_bundle_from_tmux_clients "$STATE_DIR" || true)"
+  fi
+
+  [ -n "$resolved_bundle" ] || return 0
+
+  marker_key="$(printf '%s' "$resolved_bundle" | tr -c '[:alnum:]._' '_')"
+  marker_file="$STATE_DIR/macos-permission-$marker_key.seen"
+
+  if [ "$force" != "yes" ] && [ -f "$marker_file" ]; then
+    return 0
+  fi
+
+  if notify_user "tmux-agent-alert" "Notification permission check for $resolved_bundle" "macos-terminal" "" "$STATE_DIR" "$resolved_bundle"; then
+    printf '%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" > "$marker_file"
+  fi
+}
+
+should_notify_transition() {
+  local old_state="$1"
+  local new_state="$2"
+  local notify_unknown="$3"
+
+  [ "$old_state" = "$new_state" ] && return 1
+
+  case "$new_state" in
+    WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT)
+      case "$old_state" in
+        RUNNING|UNKNOWN)
+          return 0
+          ;;
+      esac
+      ;;
+    SILENT_UNKNOWN)
+      is_enabled "$notify_unknown" || return 1
+      [ "$old_state" = "RUNNING" ] && return 0
+      ;;
+  esac
+
+  return 1
+}
+
+check_pane() {
+  local pane="$1"
+  local session="$2"
+  local window_name="$3"
+  local window_index="$4"
+  local pane_index="$5"
+  local pane_pid="$6"
+  local command="$7"
+  local path="$8"
+  local inspect="${9:-no}"
+
+  local poll_interval silence_threshold capture_lines notify_unknown cooldown min_runtime backend webhook_url macos_sender_bundle enabled_agents
+  poll_interval="$(get_tmux_option "@agent-alert-poll-interval" "${AGENT_ALERT_POLL_INTERVAL:-2}")"
+  silence_threshold="$(get_tmux_option "@agent-alert-silence-threshold" "${AGENT_ALERT_SILENCE_THRESHOLD:-45}")"
+  capture_lines="$(get_tmux_option "@agent-alert-capture-lines" "${AGENT_ALERT_CAPTURE_LINES:-200}")"
+  notify_unknown="$(get_tmux_option "@agent-alert-notify-silent-unknown" "${AGENT_ALERT_NOTIFY_SILENT_UNKNOWN:-off}")"
+  cooldown="$(get_tmux_option "@agent-alert-cooldown" "${AGENT_ALERT_COOLDOWN:-300}")"
+  min_runtime="$(get_tmux_option "@agent-alert-min-runtime" "${AGENT_ALERT_MIN_RUNTIME:-8}")"
+  backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"
+  webhook_url="$(get_tmux_option "@agent-alert-webhook-url" "${AGENT_ALERT_WEBHOOK_URL:-}")"
+  macos_sender_bundle="$(macos_sender_bundle_option)"
+  enabled_agents="$(enabled_agents_option)"
+
+  local content analysis_text process_text agent hash file now old_hash old_last_changed old_state old_first_seen old_last_notified old_last_notified_at
+  local silence_duration new_state reason context runtime can_notify title message
+
+  content="$(capture_clean_pane "$pane" "$capture_lines" || true)"
+  [ -n "$content" ] || return 0
+  analysis_text="$(printf '%s\n' "$content" | tail -60)"
+
+  process_text="$(process_tree_text "$pane_pid" || true)"
+  agent="$(detect_agent "$command" "$process_text" "$content" "$enabled_agents" || true)"
+
+  if [ -z "$agent" ]; then
+    if [ "$inspect" = "yes" ]; then
+      printf 'Pane: %s\nSession: %s\nWindow: %s.%s %s\nCommand: %s\nAgent: not detected\n' \
+        "$pane" "$session" "$window_index" "$pane_index" "$window_name" "$command"
+    fi
+    return 0
+  fi
+
+  hash="$(printf '%s' "$content" | content_hash)"
+  file="$(state_file_for_pane "$pane")"
+  now="$(now_epoch)"
+
+  old_hash="$(state_get "$file" "last_hash" "")"
+  old_last_changed="$(state_get "$file" "last_changed_at" "$now")"
+  old_state="$(state_get "$file" "state" "UNKNOWN")"
+  old_first_seen="$(state_get "$file" "first_seen_at" "$now")"
+  old_last_notified="$(state_get "$file" "last_notified_state" "")"
+  old_last_notified_at="$(state_get "$file" "last_notified_at" "0")"
+
+  if [ -z "$old_hash" ]; then
+    new_state="UNKNOWN"
+    reason="first observation"
+    old_last_changed="$now"
+  elif [ "$hash" != "$old_hash" ]; then
+    new_state="RUNNING"
+    reason="pane output changed"
+    old_last_changed="$now"
+    old_last_notified=""
+    old_last_notified_at="0"
+  else
+    silence_duration=$((now - old_last_changed))
+    if [ "$silence_duration" -ge "$silence_threshold" ]; then
+      local detection
+      detection="$(detect_silent_state "$agent" "$analysis_text")"
+      new_state="${detection%%$'\t'*}"
+      reason="${detection#*$'\t'}"
+    else
+      new_state="$old_state"
+      reason="silent for ${silence_duration}s, below threshold"
+    fi
+  fi
+
+  silence_duration=$((now - old_last_changed))
+  runtime=$((now - old_first_seen))
+  context="$(printf '%s\n' "$content" | last_visible_line)"
+
+  can_notify="no"
+  if should_notify_transition "$old_state" "$new_state" "$notify_unknown" && [ "$runtime" -ge "$min_runtime" ]; then
+    if [ "$old_last_notified" != "$new_state" ] && [ $((now - old_last_notified_at)) -ge "$cooldown" ]; then
+      can_notify="yes"
+    fi
+  fi
+
+  if [ "$inspect" = "yes" ]; then
+    cat <<EOF
+Pane: $pane
+Session: $session
+Window: $window_index.$pane_index $window_name
+Path: $path
+Command: $command
+Agent: $agent
+State: $new_state
+Previous state: $old_state
+Silence: ${silence_duration}s
+Runtime: ${runtime}s
+Matched rule: $reason
+Last line: $context
+EOF
+  fi
+
+  if [ "$can_notify" = "yes" ]; then
+    title="$(notify_title_for_state "$new_state")"
+    message="$(notify_message_for_pane "$agent" "$new_state" "$session" "$window_name" "$window_index" "$pane_index" "$pane" "$path" "$context")"
+    notify_user "$title" "$message" "$backend" "$webhook_url" "$STATE_DIR" "$macos_sender_bundle"
+    old_last_notified="$new_state"
+    old_last_notified_at="$now"
+    log_debug "notified pane=$pane agent=$agent state=$new_state reason=$reason"
+  fi
+
+  write_state "$file" \
+    "pane" "$pane" \
+    "agent" "$agent" \
+    "state" "$new_state" \
+    "last_hash" "$hash" \
+    "last_changed_at" "$old_last_changed" \
+    "first_seen_at" "$old_first_seen" \
+    "last_notified_state" "$old_last_notified" \
+    "last_notified_at" "$old_last_notified_at" \
+    "last_reason" "$reason" \
+    "last_context" "$context"
+}
+
+list_panes() {
+  tmux list-panes -a -F '#{pane_id}|#{session_name}|#{window_name}|#{window_index}|#{pane_index}|#{pane_pid}|#{pane_current_command}|#{pane_current_path}'
+}
+
+watch_loop() {
+  ensure_state_dir
+  echo "$$" > "$PID_FILE"
+  log_debug "watcher started pid=$$"
+
+  trap 'rm -f "$PID_FILE"; exit 0' INT TERM EXIT
+
+  while true; do
+    if ! tmux_has_session; then
+      log_debug "tmux server unavailable, exiting"
+      exit 0
+    fi
+
+    local poll_interval
+    poll_interval="$(get_tmux_option "@agent-alert-poll-interval" "${AGENT_ALERT_POLL_INTERVAL:-2}")"
+
+    while IFS='|' read -r pane session window_name window_index pane_index pane_pid command path; do
+      [ -n "$pane" ] || continue
+      check_pane "$pane" "$session" "$window_name" "$window_index" "$pane_index" "$pane_pid" "$command" "$path" "no" || true
+    done < <(list_panes || true)
+
+    sleep "$poll_interval"
+  done
+}
+
+start_watcher() {
+  ensure_state_dir
+  request_macos_permission "no" || true
+
+  if running_pid >/dev/null; then
+    printf 'tmux-agent-alert already running (pid %s)\n' "$(running_pid)"
+    return 0
+  fi
+
+  if ! tmux_has_session; then
+    printf 'tmux-agent-alert cannot start: no tmux server found\n' >&2
+    return 1
+  fi
+
+  nohup "$0" watch >/dev/null 2>&1 &
+  echo "$!" > "$PID_FILE"
+  printf 'tmux-agent-alert started (pid %s)\n' "$!"
+}
+
+stop_watcher() {
+  local pid
+  pid="$(running_pid || true)"
+
+  if [ -z "$pid" ]; then
+    rm -f "$PID_FILE"
+    printf 'tmux-agent-alert is not running\n'
+    return 0
+  fi
+
+  kill "$pid" >/dev/null 2>&1 || true
+  rm -f "$PID_FILE"
+  printf 'tmux-agent-alert stopped\n'
+}
+
+status_watcher() {
+  local pid
+  pid="$(running_pid || true)"
+
+  if [ -n "$pid" ]; then
+    printf 'tmux-agent-alert running (pid %s)\n' "$pid"
+  else
+    printf 'tmux-agent-alert stopped\n'
+  fi
+
+  printf 'State dir: %s\n' "$STATE_DIR"
+  printf 'Agents: %s\n' "$(enabled_agents_option)"
+
+  if is_macos; then
+    local bundle_id
+    bundle_id="$(macos_terminal_bundle_from_tmux_clients "$STATE_DIR" || true)"
+    printf 'macOS sender bundle: %s\n' "${bundle_id:-not detected}"
+  fi
+}
+
+inspect_pane() {
+  local target="${1:-}"
+
+  if [ -z "$target" ]; then
+    target="$(tmux display-message -p '#{pane_id}')"
+  fi
+
+  local line
+  line="$(tmux display-message -p -t "$target" '#{pane_id}|#{session_name}|#{window_name}|#{window_index}|#{pane_index}|#{pane_pid}|#{pane_current_command}|#{pane_current_path}')"
+
+  IFS='|' read -r pane session window_name window_index pane_index pane_pid command path <<< "$line"
+  check_pane "$pane" "$session" "$window_name" "$window_index" "$pane_index" "$pane_pid" "$command" "$path" "yes"
+}
+
+test_notify() {
+  local backend webhook_url macos_sender_bundle
+  backend="$(get_tmux_option "@agent-alert-backend" "${AGENT_ALERT_BACKEND:-auto}")"
+  webhook_url="$(get_tmux_option "@agent-alert-webhook-url" "${AGENT_ALERT_WEBHOOK_URL:-}")"
+  macos_sender_bundle="$(macos_sender_bundle_option)"
+
+  notify_user "tmux-agent-alert test" "Notifications are working." "$backend" "$webhook_url" "$STATE_DIR" "$macos_sender_bundle"
+}
+
+pane_exited() {
+  local pane="${1:-}"
+  [ -n "$pane" ] || return 0
+  rm -f "$(state_file_for_pane "$pane")"
+}
+
+main() {
+  local command="${1:-}"
+  shift || true
+
+  case "$command" in
+    start)
+      start_watcher
+      ;;
+    stop)
+      stop_watcher
+      ;;
+    restart)
+      stop_watcher
+      start_watcher
+      ;;
+    toggle)
+      if running_pid >/dev/null; then
+        stop_watcher
+      else
+        start_watcher
+      fi
+      ;;
+    status)
+      status_watcher
+      ;;
+    watch)
+      watch_loop
+      ;;
+    inspect-pane)
+      inspect_pane "${1:-}"
+      ;;
+    request-permission)
+      request_macos_permission "yes"
+      ;;
+    test-notify)
+      test_notify
+      ;;
+    pane-exited)
+      pane_exited "${1:-}"
+      ;;
+    ""|help|--help|-h)
+      usage
+      ;;
+    *)
+      printf 'Unknown command: %s\n\n' "$command" >&2
+      usage >&2
+      return 1
+      ;;
+  esac
+}
+
+main "$@"
