@@ -415,11 +415,7 @@ should_notify_transition() {
 
   case "$new_state" in
     WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT)
-      case "$old_state" in
-        RUNNING|UNKNOWN|SILENT_UNKNOWN)
-          return 0
-          ;;
-      esac
+      return 0
       ;;
     SILENT_UNKNOWN)
       is_enabled "$notify_unknown" || return 1
@@ -428,6 +424,17 @@ should_notify_transition() {
   esac
 
   return 1
+}
+
+state_notification_ignores_min_runtime() {
+  case "$1" in
+    WAITING_FOR_PERMISSION|DONE_WAITING_FOR_NEXT_PROMPT)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 check_pane() {
@@ -528,9 +535,11 @@ check_pane() {
   location="$(pane_location "$session" "$window_name" "$window_index" "$pane_index")"
 
   can_notify="no"
-  if should_notify_transition "$old_state" "$new_state" "$notify_unknown" && [ "$runtime" -ge "$min_runtime" ]; then
+  if should_notify_transition "$old_state" "$new_state" "$notify_unknown"; then
     if [ "$old_last_notified" != "$new_state" ] && [ $((now - old_last_notified_at)) -ge "$cooldown" ]; then
-      can_notify="yes"
+      if state_notification_ignores_min_runtime "$new_state" || [ "$runtime" -ge "$min_runtime" ]; then
+        can_notify="yes"
+      fi
     fi
   fi
 
