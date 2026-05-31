@@ -438,11 +438,15 @@ list_panes() {
 }
 
 watch_loop() {
+  # The daemon should keep polling even if one pane, notification backend, or
+  # tmux command has a transient failure.
+  set +e
+
   ensure_state_dir
   echo "$$" > "$PID_FILE"
   log_debug "watcher started pid=$$"
 
-  trap 'rm -f "$PID_FILE"; exit 0' INT TERM EXIT
+  trap 'log_debug "watcher exiting pid=$$"; rm -f "$PID_FILE"; exit 0' INT TERM EXIT
 
   while true; do
     if ! tmux_has_session; then
