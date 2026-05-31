@@ -108,6 +108,10 @@ main() {
 
   tmux bind-key "$key" run-shell -b "$CURRENT_DIR/bin/agent-alert toggle"
   tmux bind-key "$inspect_key" display-popup -E "$CURRENT_DIR/bin/agent-alert inspect-pane #{pane_id}; printf '\nPress enter to close...'; read _"
+  tmux set-hook -g 'after-select-pane[90]' "run-shell -b '$CURRENT_DIR/bin/agent-alert clear-alert #{pane_id}'"
+  tmux set-hook -g 'after-select-window[90]' "run-shell -b '$CURRENT_DIR/bin/agent-alert clear-alert #{pane_id}'"
+  tmux set-hook -g 'session-window-changed[90]' "run-shell -b '$CURRENT_DIR/bin/agent-alert clear-alert #{pane_id}'"
+  tmux set-hook -g 'client-session-changed[90]' "run-shell -b '$CURRENT_DIR/bin/agent-alert clear-alert #{pane_id}'"
   tmux set-hook -g 'pane-exited[90]' "run-shell -b '$CURRENT_DIR/bin/agent-alert pane-exited #{pane_id}'"
   tmux run-shell -b "$CURRENT_DIR/bin/agent-alert start"
 }
