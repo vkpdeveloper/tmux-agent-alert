@@ -142,7 +142,7 @@ state_get() {
         print default_value
       }
     }
-  ' "$file"
+  ' "$file" || printf '%s\n' "$default_value"
 }
 
 write_state() {
@@ -175,7 +175,7 @@ state_update_fields() {
     shift 2
   done
 
-  awk -F '\t' '
+  if ! awk -F '\t' '
     NR == FNR {
       updates[$1] = $2
       order[++count] = $1
@@ -198,9 +198,15 @@ state_update_fields() {
         }
       }
     }
-  ' "$updates" "$file" > "$tmp"
+  ' "$updates" "$file" > "$tmp"; then
+    rm -f "$tmp" "$updates"
+    return 0
+  fi
 
-  mv "$tmp" "$file"
+  mv "$tmp" "$file" || {
+    rm -f "$tmp" "$updates"
+    return 0
+  }
   rm -f "$updates"
 }
 
@@ -593,8 +599,8 @@ check_pane() {
   macos_sender_bundle="$(macos_sender_bundle_option)"
   enabled_agents="$(enabled_agents_option)"
 
-  local content analysis_text process_text agent hash file now old_hash old_last_changed old_state old_first_seen old_last_notified old_last_notified_at old_acknowledged_state old_acknowledged_hash
-  local silence_duration new_state reason context runtime can_notify title message subtitle location stored_visual_alert acknowledged_current_attention
+  local content analysis_text process_text agent hash file now old_hash old_last_changed old_state old_first_seen old_last_notified old_last_notified_at old_last_notified_hash old_acknowledged_state old_acknowledged_hash
+  local silence_duration new_state reason context runtime can_notify title message subtitle location stored_visual_alert acknowledged_current_attention notification_key_changed
 
   content="$(capture_clean_pane "$pane" "$capture_lines" || true)"
   [ -n "$content" ] || return 0
@@ -621,6 +627,7 @@ check_pane() {
   old_first_seen="$(state_get "$file" "first_seen_at" "$now")"
   old_last_notified="$(state_get "$file" "last_notified_state" "")"
   old_last_notified_at="$(state_get "$file" "last_notified_at" "0")"
+  old_last_notified_hash="$(state_get "$file" "last_notified_hash" "")"
   old_acknowledged_state="$(state_get "$file" "acknowledged_state" "")"
   old_acknowledged_hash="$(state_get "$file" "acknowledged_hash" "")"
 
@@ -649,6 +656,7 @@ check_pane() {
     if [ "$new_state" = "RUNNING" ]; then
       old_last_notified=""
       old_last_notified_at="0"
+      old_last_notified_hash=""
       old_acknowledged_state=""
       old_acknowledged_hash=""
     fi
@@ -678,9 +686,18 @@ check_pane() {
   fi
 
   can_notify="no"
-  if [ "$acknowledged_current_attention" != "yes" ] && should_notify_transition "$old_state" "$new_state" "$notify_unknown"; then
-    if [ "$old_last_notified" != "$new_state" ] && [ $((now - old_last_notified_at)) -ge "$cooldown" ]; then
-      if state_notification_ignores_min_runtime "$new_state" || [ "$runtime" -ge "$min_runtime" ]; then
+  if [ "$acknowledged_current_attention" != "yes" ] && visual_alert_state_is_attention "$new_state"; then
+    notification_key_changed="no"
+    if [ "$old_last_notified" != "$new_state" ] || [ "$old_last_notified_hash" != "$hash" ]; then
+      notification_key_changed="yes"
+    fi
+
+    if [ "$notification_key_changed" = "yes" ] && { state_notification_ignores_min_runtime "$new_state" || [ "$runtime" -ge "$min_runtime" ]; }; then
+      can_notify="yes"
+    fi
+  elif should_notify_transition "$old_state" "$new_state" "$notify_unknown"; then
+    if [ "$old_last_notified" != "$new_state" ] && [ $((now - old_last_notified_at)) -ge "$cooldown" ] && [ "$old_last_notified_hash" != "$hash" ]; then
+      if [ "$runtime" -ge "$min_runtime" ]; then
         can_notify="yes"
       fi
     fi
@@ -703,6 +720,8 @@ Last line: $context
 Notification title: $(notify_title_for_state "$agent" "$new_state" "$location")
 Notification subtitle: $(notification_subtitle_for_pane "$session" "$window_name" "$window_index" "$pane_index" "$session_attached")
 Visual alert: $(if visual_alert_enabled; then printf '%s' "$stored_visual_alert"; else printf 'off'; fi)
+Last notified state: $old_last_notified
+Last notified hash: $old_last_notified_hash
 Acknowledged state: $old_acknowledged_state
 Acknowledged hash: $old_acknowledged_hash
 EOF
@@ -722,6 +741,7 @@ EOF
     fi
     old_last_notified="$new_state"
     old_last_notified_at="$now"
+    old_last_notified_hash="$hash"
     log_debug "notified pane=$pane agent=$agent state=$new_state reason=$reason"
   fi
 
@@ -740,6 +760,7 @@ EOF
     "first_seen_at" "$old_first_seen" \
     "last_notified_state" "$old_last_notified" \
     "last_notified_at" "$old_last_notified_at" \
+    "last_notified_hash" "$old_last_notified_hash" \
     "acknowledged_state" "$old_acknowledged_state" \
     "acknowledged_hash" "$old_acknowledged_hash" \
     "last_reason" "$reason" \
@@ -882,6 +903,7 @@ clear_alert() {
   [ -n "$pane" ] || return 0
 
   clear_visual_alert_for_pane "$pane"
+  return 0
 }
 
 pane_exited() {

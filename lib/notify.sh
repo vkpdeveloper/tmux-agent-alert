@@ -41,20 +41,24 @@ notify_user() {
       ;;
     terminal-notifier)
       command -v terminal-notifier >/dev/null 2>&1 && {
+        local timeout
+        timeout="$(notification_command_timeout)"
         if [ -n "$subtitle" ]; then
-          terminal-notifier -title "$title" -subtitle "$subtitle" -message "$message"
+          run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -subtitle "$subtitle" -message "$message"
         else
-          terminal-notifier -title "$title" -message "$message"
+          run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -message "$message"
         fi
         return
       }
       ;;
     osascript)
       command -v osascript >/dev/null 2>&1 && {
+        local timeout
+        timeout="$(notification_command_timeout)"
         if [ -n "$subtitle" ]; then
-          osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\" subtitle \"$(osascript_escape "$subtitle")\"" >/dev/null 2>&1
+          run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\" subtitle \"$(osascript_escape "$subtitle")\""
         else
-          osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\"" >/dev/null 2>&1
+          run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\""
         fi
         return
       }
@@ -79,16 +83,20 @@ notify_user() {
   esac
 
   if command -v terminal-notifier >/dev/null 2>&1; then
+    local timeout
+    timeout="$(notification_command_timeout)"
     if [ -n "$subtitle" ]; then
-      terminal-notifier -title "$title" -subtitle "$subtitle" -message "$message"
+      run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -subtitle "$subtitle" -message "$message"
     else
-      terminal-notifier -title "$title" -message "$message"
+      run_notification_command_with_timeout "$timeout" terminal-notifier -title "$title" -message "$message"
     fi
   elif command -v osascript >/dev/null 2>&1; then
+    local timeout
+    timeout="$(notification_command_timeout)"
     if [ -n "$subtitle" ]; then
-      osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\" subtitle \"$(osascript_escape "$subtitle")\"" >/dev/null 2>&1
+      run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\" subtitle \"$(osascript_escape "$subtitle")\""
     else
-      osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\"" >/dev/null 2>&1
+      run_notification_command_with_timeout "$timeout" osascript -e "display notification \"$(osascript_escape "$message")\" with title \"$(osascript_escape "$title")\""
     fi
   elif command -v notify-send >/dev/null 2>&1; then
     notify-send "$title" "$message"
