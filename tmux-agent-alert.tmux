@@ -6,20 +6,42 @@ CURRENT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$CURRENT_DIR/lib/tmux.sh"
 
 install_status_styles() {
-  original_format="$(tmux show-option -gqv "window-status-format")"
-  original_current_format="$(tmux show-option -gqv "window-status-current-format")"
+  original_format="$(tmux show-option -gqv "@agent-alert-original-window-status-format")"
+  original_current_format="$(tmux show-option -gqv "@agent-alert-original-window-status-current-format")"
 
-  case "$original_format" in
-    *"@agent-alert-attention"*)
-      return
-      ;;
-  esac
+  if [ -z "$original_format" ]; then
+    original_format="$(tmux show-option -gqv "window-status-format")"
+  fi
+
+  if [ -z "$original_current_format" ]; then
+    original_current_format="$(tmux show-option -gqv "window-status-current-format")"
+  fi
+
+  original_format="$(strip_agent_alert_status_prefix "$original_format")"
+  original_current_format="$(strip_agent_alert_status_prefix "$original_current_format")"
 
   tmux set-option -gq "@agent-alert-original-window-status-format" "$original_format"
   tmux set-option -gq "@agent-alert-original-window-status-current-format" "$original_current_format"
 
-  tmux set-option -gq "window-status-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}$original_format"
-  tmux set-option -gq "window-status-current-format" "#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}$original_current_format"
+  tmux set-option -gq "window-status-format" "#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}$original_format"
+  tmux set-option -gq "window-status-current-format" "#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}$original_current_format"
+}
+
+strip_agent_alert_status_prefix() {
+  local value="$1"
+  local old_prefix='#{?#{==:#{@agent-alert-attention},red},#[fg=red,bold],#{?#{==:#{@agent-alert-attention},yellow},#[fg=yellow,bold],}}'
+  local new_prefix='#{?#{==:#{@agent-alert-attention},red},#[bg=red,fg=black,bold],#{?#{==:#{@agent-alert-attention},yellow},#[bg=yellow,fg=black,bold],}}'
+
+  case "$value" in
+    "$old_prefix"*)
+      value="${value#"$old_prefix"}"
+      ;;
+    "$new_prefix"*)
+      value="${value#"$new_prefix"}"
+      ;;
+  esac
+
+  printf '%s\n' "$value"
 }
 
 main() {

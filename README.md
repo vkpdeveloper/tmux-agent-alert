@@ -81,9 +81,6 @@ set -g @agent-alert-request-macos-permission 'on'
 set -g @agent-alert-macos-sender-bundle 'auto'
 
 set -g @agent-alert-visual-alert 'on'
-set -g @agent-alert-visual-done-style 'fg=red,bold'
-set -g @agent-alert-visual-permission-style 'fg=red,bold'
-set -g @agent-alert-visual-silent-style 'fg=yellow,bold'
 set -g @agent-alert-tmux-message-duration '3000'
 ```
 
@@ -129,7 +126,7 @@ silent unknown  yellow bold window item
 running again   marker cleared
 ```
 
-The plugin does not show a tmux message for `RUNNING`. A tmux message is shown for at least 3 seconds only when desktop notification delivery is disabled or fails.
+The marker keeps the normal window label, such as `3:AI`, and changes that status-bar item to a red or yellow block. The plugin does not show a tmux message for `RUNNING`. A tmux message is shown for at least 3 seconds only when desktop notification delivery is disabled or fails.
 
 Disable it:
 
