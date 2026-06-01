@@ -124,6 +124,18 @@ test_detection() {
   detection="$(detect_silent_state "codex" "What would you like to do next"$'\n'"$(numbered_lines 10 filler)"$'\n'"esc to interrupt")"
   assert_eq "$(detected_state "$detection")" "RUNNING" "prefers recent running indicator over stale completion text"
 
+  detection="$(detect_silent_state "opencode" "Build · MiniMax M3 OpenCode Go"$'\n'"esc interrupt"$'\n'"124.0K (24%) · \$1.12  ctrl+p commands"$'\n'"OpenCode 1.15.13")"
+  assert_eq "$(detected_state "$detection")" "RUNNING" "detects OpenCode running from esc interrupt despite footer"
+
+  detection="$(detect_silent_state "opencode" "Asking for Permission"$'\n'"Allow once"$'\n'"Reject")"
+  assert_eq "$(detected_state "$detection")" "WAITING_FOR_PERMISSION" "detects OpenCode permission prompt by title"
+
+  detection="$(detect_silent_state "opencode" "OpenCode 1.15.13"$'\n'"ctrl+p commands")"
+  assert_eq "$(detected_state "$detection")" "SILENT_UNKNOWN" "does not treat OpenCode footer as completion or running"
+
+  detection="$(detect_silent_state "opencode" 'tool "ask" prompt for approval')"
+  assert_eq "$(detected_state "$detection")" "SILENT_UNKNOWN" "does not treat OpenCode config wording as permission prompt"
+
   detection="$(detect_silent_state "kiro" "Kiro is working · type to queue a message")"
   assert_eq "$(detected_state "$detection")" "RUNNING" "detects Kiro working state"
 
