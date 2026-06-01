@@ -16,6 +16,7 @@ Default rules focus on:
 - Claude Code
 - OpenCode
 - Pi coding agent
+- Kiro CLI
 
 The rules are intentionally editable because agent TUIs change over time and tmux only exposes terminal text, not semantic agent state.
 
@@ -105,7 +106,7 @@ set -g @agent-alert-enabled 'on'
 set -g @agent-alert-key 'A'
 set -g @agent-alert-inspect-key 'M-i'
 
-set -g @agent-alert-agents 'codex,claude,opencode,pi'
+set -g @agent-alert-agents 'codex,claude,opencode,pi,kiro'
 set -g @agent-alert-poll-interval '1'
 set -g @agent-alert-silence-threshold '3'
 set -g @agent-alert-capture-lines '200'
@@ -213,6 +214,9 @@ agent_permission_patterns() {
     pi)
       printf '%s\n' 'permission request' 'permissionmode.*ask'
       ;;
+    kiro)
+      printf '%s\n' 'yes.*trust.*no' 'select scope' 'per-request'
+      ;;
   esac
 }
 ```
@@ -225,6 +229,7 @@ Current public docs confirm that these agents have permission or approval flows:
 - Claude Code pauses for permission before edits, shell commands, and network requests depending on permission mode.
 - OpenCode exposes per-tool permissions with `ask`, `allow`, and `deny`.
 - Pi permission layers expose `permissionMode: ask` for prompting and include tmux-aware notification behavior.
+- Kiro CLI uses tool permissions with `Trusted` and `Per-request` states. Its TUI asks for approval with `Yes`, `Trust`, and `No`, and shell/read/write trust pickers can ask the user to select a trust scope.
 
 Because docs generally describe behavior rather than exact TUI text, the plugin ships with conservative patterns and an inspection command for tuning against real panes.
 
@@ -239,11 +244,17 @@ run-shell /Users/vaibhav/Developer/Personal/tmux-agent-alert/tmux-agent-alert.tm
 Run syntax checks:
 
 ```sh
-bash -n tmux-agent-alert.tmux bin/agent-alert lib/*.sh config/default-rules.sh
+bash -n tmux-agent-alert.tmux bin/agent-alert lib/*.sh config/default-rules.sh tests/run.sh
 ```
 
 Run lint checks:
 
 ```sh
-shellcheck -x tmux-agent-alert.tmux bin/agent-alert lib/*.sh config/default-rules.sh
+shellcheck -x tmux-agent-alert.tmux bin/agent-alert lib/*.sh config/default-rules.sh tests/run.sh
+```
+
+Run the minimal detection and transition harness:
+
+```sh
+bash tests/run.sh
 ```

@@ -4,7 +4,7 @@
 # cleaned pane text after silence is detected.
 
 # shellcheck disable=SC2034
-AGENT_ALERT_KNOWN_AGENTS="codex,claude,opencode,pi"
+AGENT_ALERT_KNOWN_AGENTS="codex,claude,opencode,pi,kiro"
 
 agent_commands() {
   case "$1" in
@@ -19,6 +19,9 @@ agent_commands() {
       ;;
     pi)
       printf '%s\n' 'pi' 'pi-coding-agent'
+      ;;
+    kiro)
+      printf '%s\n' 'kiro' 'kiro-cli'
       ;;
   esac
 }
@@ -36,6 +39,9 @@ agent_output_hints() {
       ;;
     pi)
       printf '%s\n' 'pi coding agent' 'permissionmode' 'pi.dev'
+      ;;
+    kiro)
+      printf '%s\n' 'kiro' 'kiro cli' 'kiro is working' 'type to queue a message' 'ask a question or describe a task'
       ;;
   esac
 }
@@ -96,8 +102,15 @@ agent_running_patterns() {
       printf '%s\n' \
         '[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] working\.\.\.' \
         'working\.\.\.' \
-        'kiro is working · type to queue a message' \
         'type to queue a message'
+      ;;
+    kiro)
+      printf '%s\n' \
+        'kiro is working · type to queue a message' \
+        'kiro is working' \
+        'initializing\.\.\.' \
+        'type to queue a message' \
+        'esc to cancel'
       ;;
   esac
 
@@ -162,6 +175,22 @@ agent_permission_patterns() {
         'permission request' \
         'systemnotifications'
       ;;
+    kiro)
+      printf '%s\n' \
+        'yes[[:space:]·]+trust[[:space:]·]+no' \
+        'yes.*trust.*no' \
+        'press.*to navigate.*select scope' \
+        'select scope' \
+        'full command.*partial command.*base command' \
+        'specific paths.*complete directory.*entire tool' \
+        'trust(ed)? (tool|permission|pattern|scope)' \
+        'per-request' \
+        'untrusted' \
+        'requires? permission' \
+        'ask(ed|ing)? for (your )?(approval|permission)' \
+        'approve.*tool' \
+        'allow.*tool'
+      ;;
   esac
 
   global_permission_patterns
@@ -224,6 +253,17 @@ agent_done_patterns() {
         'new prompt' \
         'send.*prompt' \
         '↑[0-9.]+[kmg]? .*↓[0-9.]+[kmg]? .*\$[0-9.]+' \
+        '\((auto|kiro|sub)\).*((claude|gpt|gemini|opus|sonnet)|xhigh|high)' \
+        '^~/.+'
+      ;;
+    kiro)
+      printf '%s\n' \
+        'kiro.*ready' \
+        'kiro[[:space:]]*>' \
+        'ask a question or describe a task' \
+        '^>[[:space:]]*$' \
+        'type a message' \
+        'type your message' \
         '\((auto|kiro|sub)\).*((claude|gpt|gemini|opus|sonnet)|xhigh|high)' \
         '^~/.+'
       ;;

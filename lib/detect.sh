@@ -20,6 +20,20 @@ last_visible_line() {
   awk 'NF { line=$0 } END { gsub(/^[[:space:]]+|[[:space:]]+$/, "", line); print line }'
 }
 
+recent_visible_lines() {
+  local max_lines="${1:-20}"
+
+  awk 'NF { lines[++count] = $0 } END {
+    start = count - max_lines + 1
+    if (start < 1) {
+      start = 1
+    }
+    for (i = start; i <= count; i++) {
+      print lines[i]
+    }
+  }' max_lines="$max_lines"
+}
+
 matches_any_pattern() {
   local content="$1"
   shift
@@ -88,7 +102,7 @@ detect_agent() {
 
   # Process/command detection is much stronger than pane text. A Pi pane can
   # mention Codex while discussing this plugin, but the child process is still pi.
-  for agent in codex claude opencode pi; do
+  for agent in codex claude opencode pi kiro; do
     enabled_agent "$agent" "$enabled_agents" || continue
 
     while IFS= read -r candidate; do
@@ -100,7 +114,7 @@ detect_agent() {
     done < <(agent_commands "$agent")
   done
 
-  for agent in codex claude opencode pi; do
+  for agent in codex claude opencode pi kiro; do
     enabled_agent "$agent" "$enabled_agents" || continue
 
     while IFS= read -r candidate; do
@@ -119,24 +133,19 @@ detect_silent_state() {
   local agent="$1"
   local content="$2"
   local pattern
+  local permission_text activity_text prompt_text
   local patterns=()
+
+  permission_text="$(printf '%s\n' "$content" | recent_visible_lines 40)"
+  activity_text="$(printf '%s\n' "$content" | recent_visible_lines 16)"
+  prompt_text="$(printf '%s\n' "$content" | recent_visible_lines 8)"
 
   while IFS= read -r pattern; do
     patterns+=("$pattern")
   done < <(agent_permission_patterns "$agent")
 
-  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
-    printf '%s\t%s\n' "WAITING_FOR_PERMISSION" "$pattern"
-    return
-  fi
-
-  patterns=()
-  while IFS= read -r pattern; do
-    patterns+=("$pattern")
-  done < <(agent_done_patterns "$agent")
-
-  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
-    printf '%s\t%s\n' "DONE_WAITING_FOR_NEXT_PROMPT" "$pattern"
+  if pattern="$(matches_any_pattern "$permission_text" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "WAITING_FOR_PERMISSION" "recent permission: $pattern"
     return
   fi
 
@@ -145,8 +154,18 @@ detect_silent_state() {
     patterns+=("$pattern")
   done < <(agent_running_patterns "$agent")
 
-  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
-    printf '%s\t%s\n' "RUNNING" "$pattern"
+  if pattern="$(matches_any_pattern "$activity_text" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "RUNNING" "recent activity: $pattern"
+    return
+  fi
+
+  patterns=()
+  while IFS= read -r pattern; do
+    patterns+=("$pattern")
+  done < <(agent_done_patterns "$agent")
+
+  if pattern="$(matches_any_pattern "$prompt_text" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "DONE_WAITING_FOR_NEXT_PROMPT" "bottom prompt: $pattern"
     return
   fi
 
@@ -157,14 +176,19 @@ detect_active_state() {
   local agent="$1"
   local content="$2"
   local pattern
+  local permission_text activity_text prompt_text
   local patterns=()
+
+  permission_text="$(printf '%s\n' "$content" | recent_visible_lines 40)"
+  activity_text="$(printf '%s\n' "$content" | recent_visible_lines 16)"
+  prompt_text="$(printf '%s\n' "$content" | recent_visible_lines 8)"
 
   while IFS= read -r pattern; do
     patterns+=("$pattern")
   done < <(agent_permission_patterns "$agent")
 
-  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
-    printf '%s\t%s\n' "WAITING_FOR_PERMISSION" "$pattern"
+  if pattern="$(matches_any_pattern "$permission_text" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "WAITING_FOR_PERMISSION" "recent permission: $pattern"
     return
   fi
 
@@ -173,8 +197,18 @@ detect_active_state() {
     patterns+=("$pattern")
   done < <(agent_running_patterns "$agent")
 
-  if pattern="$(matches_any_pattern "$content" "${patterns[@]}")"; then
-    printf '%s\t%s\n' "RUNNING" "$pattern"
+  if pattern="$(matches_any_pattern "$activity_text" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "RUNNING" "recent activity: $pattern"
+    return
+  fi
+
+  patterns=()
+  while IFS= read -r pattern; do
+    patterns+=("$pattern")
+  done < <(agent_done_patterns "$agent")
+
+  if pattern="$(matches_any_pattern "$prompt_text" "${patterns[@]}")"; then
+    printf '%s\t%s\n' "DONE_WAITING_FOR_NEXT_PROMPT" "bottom prompt: $pattern"
     return
   fi
 

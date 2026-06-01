@@ -333,6 +333,9 @@ agent_notification_name() {
     pi)
       printf '%s\n' "Pi"
       ;;
+    kiro)
+      printf '%s\n' "Kiro"
+      ;;
     *)
       printf '%s\n' "Agent"
       ;;
@@ -1065,4 +1068,6 @@ main() {
   esac
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
